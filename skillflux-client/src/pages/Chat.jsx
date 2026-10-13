@@ -33,11 +33,12 @@ const Chat = () => {
     if (!currentUser) return;
     const q = query(
       collection(db, 'chats'),
-      where('participants', 'array-contains', currentUser.uid),
-      orderBy('lastMessageAt', 'desc')
+      where('participants', 'array-contains', currentUser.uid)
     );
     const unsub = onSnapshot(q, snap => {
-      setConversations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
+      setConversations(list);
       setLoading(false);
     });
     return unsub;
@@ -99,9 +100,10 @@ const Chat = () => {
     setNewMessage('');
     setSending(true);
     try {
+      const myName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
       await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
         senderId: currentUser.uid,
-        senderName: userData.displayName,
+        senderName: myName,
         text,
         timestamp: serverTimestamp(),
       });

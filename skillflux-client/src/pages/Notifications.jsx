@@ -30,11 +30,12 @@ const Notifications = () => {
     if (!currentUser) return;
     const q = query(
       collection(db, 'notifications'),
-      where('recipientId', '==', currentUser.uid),
-      orderBy('createdAt', 'desc')
+      where('recipientId', '==', currentUser.uid)
     );
     const unsub = onSnapshot(q, snap => {
-      setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setNotifications(list);
       setLoading(false);
     });
     return unsub;

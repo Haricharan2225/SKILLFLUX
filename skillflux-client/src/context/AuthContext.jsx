@@ -97,15 +97,19 @@ export const AuthProvider = ({ children }) => {
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
-            setUserData(userDoc.data());
+            const data = userDoc.data();
+            setUserData({
+              ...data,
+              displayName: data.displayName || user.displayName || user.email?.split('@')[0] || 'User'
+            });
           } else {
             // Create profile if missing (edge case)
             const role = user.email === ADMIN_EMAIL ? 'admin' : 'user';
             const fallback = {
               uid: user.uid,
               email: user.email,
-              displayName: user.displayName || 'User',
-              username: (user.displayName || 'user').toLowerCase().replace(/\s+/g, '_') + '_' + user.uid.slice(0, 4),
+              displayName: user.displayName || user.email?.split('@')[0] || 'User',
+              username: (user.displayName || user.email?.split('@')[0] || 'user').toLowerCase().replace(/\s+/g, '_') + '_' + user.uid.slice(0, 4),
               role,
               bio: '',
               location: '',
@@ -126,6 +130,20 @@ export const AuthProvider = ({ children }) => {
           }
         } catch (e) {
           console.error('Error loading user data:', e);
+          setUserData({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || user.email?.split('@')[0] || 'User',
+            role: user.email === ADMIN_EMAIL ? 'admin' : 'user',
+            skillsOffered: [],
+            skillsWanted: [],
+            productsOffered: [],
+            productsWanted: [],
+            followers: [],
+            following: [],
+            connections: [],
+            onboardingComplete: true
+          });
         }
       } else {
         setUserData(null);

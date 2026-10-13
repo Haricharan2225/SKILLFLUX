@@ -27,8 +27,8 @@ const Exchanges = () => {
       setLoading(true);
       try {
         const [sentSnap, receivedSnap] = await Promise.all([
-          getDocs(query(collection(db, 'exchanges'), where('senderId', '==', currentUser.uid), orderBy('createdAt', 'desc'))),
-          getDocs(query(collection(db, 'exchanges'), where('recipientId', '==', currentUser.uid), orderBy('createdAt', 'desc'))),
+          getDocs(query(collection(db, 'exchanges'), where('senderId', '==', currentUser.uid))),
+          getDocs(query(collection(db, 'exchanges'), where('recipientId', '==', currentUser.uid))),
         ]);
         const all = [...sentSnap.docs, ...receivedSnap.docs].map(d => ({ id: d.id, ...d.data() }));
         const unique = Array.from(new Map(all.map(e => [e.id, e])).values());
@@ -88,12 +88,13 @@ const Exchanges = () => {
           });
         }
         // Notify sender
+        const myName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
         await addDoc(collection(db, 'notifications'), {
           recipientId: ex.senderId,
           actorId: currentUser.uid,
-          actorName: userData.displayName,
+          actorName: myName,
           type: 'exchange_accepted',
-          message: `${userData.displayName} accepted your exchange proposal`,
+          message: `${myName} accepted your exchange proposal`,
           read: false,
           createdAt: serverTimestamp(),
         });

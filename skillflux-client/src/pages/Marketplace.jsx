@@ -48,15 +48,22 @@ const Marketplace = () => {
     setLoading(true);
     try {
       const [skillsSnap, productsSnap, usersSnap, mySkillsSnap, myProductsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'skills'), where('status', '==', 'Active'), orderBy('createdAt', 'desc'), limit(50))),
-        getDocs(query(collection(db, 'products'), where('status', '==', 'Available'), orderBy('createdAt', 'desc'), limit(50))),
+        getDocs(query(collection(db, 'skills'), limit(50))),
+        getDocs(query(collection(db, 'products'), limit(50))),
         getDocs(query(collection(db, 'users'), limit(50))),
         getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid))),
         getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid))),
       ]);
 
-      const allSkills = skillsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.userId !== currentUser.uid);
-      const allProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.userId !== currentUser.uid);
+      const allSkills = skillsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(s => s.userId !== currentUser.uid && s.status !== 'Inactive');
+      allSkills.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+      const allProducts = productsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.userId !== currentUser.uid && p.status !== 'Unavailable');
+      allProducts.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.uid !== currentUser.uid && !u.isDemo);
       const ms = mySkillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const mp = myProductsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -106,11 +113,12 @@ const Marketplace = () => {
     if (!exchangeModal) return;
     setSending(true);
     try {
+      const myName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
       await addDoc(collection(db, 'exchanges'), {
         senderId: currentUser.uid,
-        senderName: userData.displayName,
+        senderName: myName,
         recipientId: exchangeModal.userId || exchangeModal.uid,
-        recipientName: exchangeModal.userName || exchangeModal.displayName,
+        recipientName: exchangeModal.userName || exchangeModal.displayName || 'Member',
         offeredType: proposal.offeredType,
         offeredId: proposal.offeredId,
         offeredTitle: proposal.offeredTitle,
@@ -130,9 +138,9 @@ const Marketplace = () => {
       await addDoc(collection(db, 'notifications'), {
         recipientId: exchangeModal.userId || exchangeModal.uid,
         actorId: currentUser.uid,
-        actorName: userData.displayName,
+        actorName: myName,
         type: 'exchange_request',
-        message: `${userData.displayName} sent you an exchange proposal`,
+        message: `${myName} sent you an exchange proposal`,
         read: false,
         createdAt: serverTimestamp(),
       });

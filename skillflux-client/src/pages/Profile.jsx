@@ -64,12 +64,13 @@ const Profile = () => {
       } else {
         await updateDoc(myRef, { following: arrayUnion(uid) });
         await updateDoc(theirRef, { followers: arrayUnion(currentUser.uid) });
+        const myName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
         await addDoc(collection(db, 'notifications'), {
           recipientId: uid,
           actorId: currentUser.uid,
-          actorName: userData.displayName,
+          actorName: myName,
           type: 'follow',
-          message: `${userData.displayName} started following you`,
+          message: `${myName} started following you`,
           read: false,
           createdAt: serverTimestamp(),
         });
@@ -96,12 +97,13 @@ const Profile = () => {
         await updateDoc(doc(db, 'users', uid), {
           connectionRequests: arrayUnion(currentUser.uid)
         });
+        const myName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
         await addDoc(collection(db, 'notifications'), {
           recipientId: uid,
           actorId: currentUser.uid,
-          actorName: userData.displayName,
+          actorName: myName,
           type: 'connection_request',
-          message: `${userData.displayName} wants to connect with you`,
+          message: `${myName} wants to connect with you`,
           read: false,
           createdAt: serverTimestamp(),
         });

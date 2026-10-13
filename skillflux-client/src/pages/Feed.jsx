@@ -46,18 +46,20 @@ const Feed = () => {
     if (!newPost.content.trim()) return;
     setPosting(true);
     try {
+      const myName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+      const myAvatar = userData?.avatar || currentUser?.photoURL || '';
       const ref = await addDoc(collection(db, 'posts'), {
         content: newPost.content.trim(),
         type: newPost.type,
         authorId: currentUser.uid,
-        authorName: userData.displayName,
-        authorAvatar: userData.avatar || '',
+        authorName: myName,
+        authorAvatar: myAvatar,
         likes: [],
         commentCount: 0,
         createdAt: serverTimestamp(),
       });
       setPosts(prev => [{
-        id: ref.id, ...newPost, authorId: currentUser.uid, authorName: userData.displayName,
+        id: ref.id, ...newPost, authorId: currentUser.uid, authorName: myName,
         likes: [], commentCount: 0, createdAt: { toDate: () => new Date() }
       }, ...prev]);
       setNewPost({ content: '', type: 'Text' });

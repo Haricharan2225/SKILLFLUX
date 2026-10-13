@@ -37,13 +37,18 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const [skillsSnap, productsSnap, sentSnap, receivedSnap] = await Promise.all([
-        getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'exchanges'), where('senderId', '==', currentUser.uid), orderBy('createdAt', 'desc'), limit(20))),
-        getDocs(query(collection(db, 'exchanges'), where('recipientId', '==', currentUser.uid), orderBy('createdAt', 'desc'), limit(20))),
+        getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid))),
+        getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid))),
+        getDocs(query(collection(db, 'exchanges'), where('senderId', '==', currentUser.uid), limit(50))),
+        getDocs(query(collection(db, 'exchanges'), where('recipientId', '==', currentUser.uid), limit(50))),
       ]);
-      setSkills(skillsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setProducts(productsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const mySkills = skillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      mySkills.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setSkills(mySkills);
+
+      const myProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      myProducts.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setProducts(myProducts);
 
       // Merge and deduplicate
       const all = [...sentSnap.docs, ...receivedSnap.docs].map(d => ({ id: d.id, ...d.data() }));
@@ -51,8 +56,7 @@ const Dashboard = () => {
       unique.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setExchanges(unique);
     } catch (err) {
-      console.error(err);
-      toast.error('Failed to load data.');
+      console.error('Dashboard load error:', err);
     } finally {
       setLoading(false);
     }
@@ -62,44 +66,79 @@ const Dashboard = () => {
 
   const handleAddSkill = async (e) => {
     e.preventDefault();
+    if (!currentUser) {
+      toast.error('You must be signed in.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const ref = await addDoc(collection(db, 'skills'), {
-        ...newSkill,
+      const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+      const userAvatar = userData?.avatar || currentUser.photoURL || '';
+
+      const skillData = {
+        title: newSkill.title?.trim() || '',
+        description: newSkill.description?.trim() || '',
+        category: newSkill.category || 'Web Development',
+        experienceLevel: newSkill.experienceLevel || 'Intermediate',
+        availability: newSkill.availability || 'Flexible',
         userId: currentUser.uid,
-        userName: userData.displayName,
-        userAvatar: userData.avatar || '',
+        userName: displayName,
+        userAvatar: userAvatar,
         status: 'Active',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      setSkills(prev => [{ id: ref.id, ...newSkill, userId: currentUser.uid }, ...prev]);
+      };
+
+      const ref = await addDoc(collection(db, 'skills'), skillData);
+      setSkills(prev => [{ id: ref.id, ...skillData }, ...prev]);
       setAddSkillOpen(false);
       setNewSkill({ title: '', description: '', category: 'Web Development', experienceLevel: 'Intermediate', availability: 'Flexible' });
       toast.success('Skill listed successfully!');
-    } catch { toast.error('Failed to add skill.'); }
-    finally { setSubmitting(false); }
+    } catch (err) {
+      console.error('Failed to add skill:', err);
+      toast.error(err?.message || 'Failed to add skill.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleAddProduct = async (e) => {
     e.preventDefault();
+    if (!currentUser) {
+      toast.error('You must be signed in.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const ref = await addDoc(collection(db, 'products'), {
-        ...newProduct,
+      const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+      const userAvatar = userData?.avatar || currentUser.photoURL || '';
+
+      const productData = {
+        title: newProduct.title?.trim() || '',
+        description: newProduct.description?.trim() || '',
+        category: newProduct.category || 'Electronics',
+        condition: newProduct.condition || 'Good',
+        desiredExchange: newProduct.desiredExchange?.trim() || '',
+        imageURL: newProduct.imageURL?.trim() || '',
         userId: currentUser.uid,
-        userName: userData.displayName,
-        userAvatar: userData.avatar || '',
+        userName: displayName,
+        userAvatar: userAvatar,
         status: 'Available',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      setProducts(prev => [{ id: ref.id, ...newProduct, userId: currentUser.uid }, ...prev]);
+      };
+
+      const ref = await addDoc(collection(db, 'products'), productData);
+      setProducts(prev => [{ id: ref.id, ...productData }, ...prev]);
       setAddProductOpen(false);
       setNewProduct({ title: '', description: '', category: 'Electronics', condition: 'Good', desiredExchange: '', imageURL: '' });
       toast.success('Product listed successfully!');
-    } catch { toast.error('Failed to add product.'); }
-    finally { setSubmitting(false); }
+    } catch (err) {
+      console.error('Failed to add product:', err);
+      toast.error(err?.message || 'Failed to add product.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDelete = async (type, id) => {
