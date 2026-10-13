@@ -6,14 +6,14 @@ import { db } from '../firebase';
 import { collection, getDocs, query, limit, where } from 'firebase/firestore';
 import {
   ArrowRight, Repeat2, BookOpen, Package, Shield,
-  ChevronDown, Star, Users, Zap, CheckCircle
+  ChevronDown, Star, Users, Zap, CheckCircle, User, Compass
 } from 'lucide-react';
 import { getInitials, getAvatarColor, EXCHANGE_TYPES } from '../utils/helpers';
 
 const HOW_IT_WORKS = [
   { step: 1, icon: User, title: 'Create Your Profile', desc: 'List your skills, knowledge, and products. Share what you offer and what you need.' },
   { step: 2, icon: Compass, title: 'Discover Matches', desc: 'Our smart algorithm finds people whose needs match what you offer, and vice versa.' },
-  { step: 3, icon: Handshake, title: 'Connect & Exchange', desc: 'Send an exchange proposal, chat, agree on terms, and complete your barter — no money needed.' },
+  { step: 3, icon: Repeat2, title: 'Connect & Exchange', desc: 'Send an exchange proposal, chat, agree on terms, and complete your barter — no money needed.' },
 ];
 
 const DEMO_MEMBERS = [
@@ -39,10 +39,6 @@ const FAQ = [
   { q: 'Is it safe?', a: 'All users are verified via email. Exchanges are tracked end-to-end with our completion confirmation system. Both parties must confirm before an exchange is marked complete.' },
   { q: 'What if an exchange goes wrong?', a: 'You can cancel an exchange at any time before completion. Our admin team reviews reported issues and maintains community standards.' },
 ];
-
-// Using simple svg icons for HOW_IT_WORKS since we need simple references
-import { User, Compass } from 'lucide-react';
-const Handshake = Repeat2;
 
 const Landing = () => {
   const { currentUser } = useAuth();

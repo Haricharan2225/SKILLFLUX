@@ -9,7 +9,8 @@ import {
 } from 'firebase/firestore';
 import {
   Plus, Trash2, Code, Package, Bell, Repeat2, MessageCircle,
-  CheckCircle, XCircle, Users, Star, TrendingUp, Edit3, LayoutDashboard
+  CheckCircle, XCircle, Users, Star, TrendingUp, Edit3, LayoutDashboard,
+  Compass, User
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Avatar, SkeletonCard, EmptyState, Modal, StatCard } from '../components/UI';
@@ -422,7 +423,5 @@ const Dashboard = () => {
   );
 };
 
-// Fix missing imports
-import { Compass, User } from 'lucide-react';
 export default Dashboard;
 
