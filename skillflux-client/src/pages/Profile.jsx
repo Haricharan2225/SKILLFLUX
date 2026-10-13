@@ -31,25 +31,77 @@ const Profile = () => {
   useEffect(() => {
     const loadProfile = async () => {
       setLoading(true);
-      try {
-        const userDoc = await getDoc(doc(db, 'users', uid));
-        if (!userDoc.exists()) { navigate('/marketplace'); return; }
-        setProfileUser({ uid, ...userDoc.data() });
 
-        const [skillsSnap, productsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'skills'), where('userId', '==', uid))),
-          getDocs(query(collection(db, 'products'), where('userId', '==', uid))),
-        ]);
-        setSkills(skillsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setProducts(productsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Local fallback skills and products
+      const localSkillsRaw = localStorage.getItem(`skillflux_local_skills_${uid}`);
+      const localSkills = localSkillsRaw ? JSON.parse(localSkillsRaw) : [];
+
+      const localProductsRaw = localStorage.getItem(`skillflux_local_products_${uid}`);
+      const localProducts = localProductsRaw ? JSON.parse(localProductsRaw) : [];
+
+      if (isOwnProfile && userData) {
+        setProfileUser({ uid, ...userData });
+      }
+
+      try {
+        let firestoreUser = null;
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            firestoreUser = userDoc.data();
+          }
+        } catch (uErr) {
+          console.info('User doc notice:', uErr.message);
+        }
+
+        if (firestoreUser) {
+          setProfileUser({ uid, ...firestoreUser });
+        } else if (!isOwnProfile) {
+          // Check demo users
+          const demoUser = [
+            { uid: 'demo1', displayName: 'Aarav Sharma', bio: 'React developer offering mentoring in exchange for UI/UX lessons.', skillsOffered: ['React.js', 'TypeScript'], skillsWanted: ['UI/UX Design'] },
+            { uid: 'demo2', displayName: 'Priya Reddy', bio: 'UI/UX designer wanting to learn frontend development.', skillsOffered: ['Figma', 'UI Design'], skillsWanted: ['React.js'] },
+            { uid: 'demo4', displayName: 'Ananya Patel', bio: 'Graphic designer exchanging skills and a drawing tablet.', skillsOffered: ['Graphic Design', 'Illustrator'], skillsWanted: ['Photography'] },
+            { uid: 'demo5', displayName: 'Kiran Kumar', bio: 'Video editor wanting digital marketing knowledge.', skillsOffered: ['Video Editing', 'Premiere Pro'], skillsWanted: ['Digital Marketing'] },
+          ].find(u => u.uid === uid);
+
+          if (demoUser) {
+            setProfileUser(demoUser);
+          } else {
+            navigate('/marketplace');
+            return;
+          }
+        }
+
+        let firestoreSkills = [];
+        let firestoreProducts = [];
+        try {
+          const [skillsSnap, productsSnap] = await Promise.all([
+            getDocs(query(collection(db, 'skills'), where('userId', '==', uid))),
+            getDocs(query(collection(db, 'products'), where('userId', '==', uid))),
+          ]);
+          firestoreSkills = skillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          firestoreProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (sErr) {
+          console.info('Firestore load notice:', sErr.message);
+        }
+
+        // Merge local & firestore
+        const skillsMap = new Map();
+        [...localSkills, ...firestoreSkills].forEach(s => skillsMap.set(s.id || s.title, s));
+        setSkills(Array.from(skillsMap.values()));
+
+        const productsMap = new Map();
+        [...localProducts, ...firestoreProducts].forEach(p => productsMap.set(p.id || p.title, p));
+        setProducts(Array.from(productsMap.values()));
       } catch (err) {
-        console.error(err);
+        console.error('Error loading profile:', err);
       } finally {
         setLoading(false);
       }
     };
     if (uid) loadProfile();
-  }, [uid]);
+  }, [uid, isOwnProfile, userData]);
 
   const handleFollow = async () => {
     if (!currentUser || isOwnProfile || actionLoading) return;

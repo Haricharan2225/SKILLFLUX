@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary-50: #f0fdf4;
-  --color-primary-100: #dcfce7;
-  --color-primary-200: #bbf7d0;
-  --color-primary-300: #86efac;
-  --color-primary-400: #4ade80;
-  --color-primary-500: #22c55e;
-  --color-primary-600: #16a34a;
-  --color-primary-700: #15803d;
-  --color-primary-800: #166534;
-  --color-primary-900: #14532d;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 @layer base {
@@ -19,11 +19,16 @@
     box-sizing: border-box;
   }
   body {
-    @apply bg-slate-50 text-slate-900 antialiased overflow-x-hidden;
+    @apply bg-slate-50 text-slate-900 antialiased overflow-x-hidden selection:bg-emerald-500/20 selection:text-emerald-900;
     font-family: var(--font-sans);
+    background-image: 
+      radial-gradient(at 15% 10%, rgba(16, 185, 129, 0.05) 0px, transparent 40%),
+      radial-gradient(at 85% 15%, rgba(5, 150, 105, 0.04) 0px, transparent 40%),
+      radial-gradient(at 50% 80%, rgba(52, 211, 153, 0.04) 0px, transparent 50%);
+    background-attachment: fixed;
   }
   h1, h2, h3, h4, h5, h6 {
-    @apply font-bold text-slate-900;
+    @apply font-bold text-slate-900 tracking-tight;
   }
   input, textarea, select {
     @apply outline-none;
@@ -32,83 +37,92 @@
 
 /* Glass utilities */
 @utility glass {
-  background-color: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.85);
 }
 
 @utility glass-card {
-  @apply glass rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300;
+  @apply glass rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_30px_-4px_rgba(16,185,129,0.12)] hover:border-emerald-500/30 transition-all duration-300;
+}
+
+/* Card */
+@utility card {
+  @apply bg-white rounded-2xl border border-slate-200/90 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.04)];
+}
+
+@utility card-interactive {
+  @apply card hover:border-emerald-500/40 hover:shadow-[0_8px_25px_-5px_rgba(16,185,129,0.1)] transition-all duration-300 hover:-translate-y-0.5;
 }
 
 /* Button utilities */
 @utility btn-primary {
-  @apply bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-5 rounded-xl
+  @apply bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold py-2.5 px-5 rounded-xl
          transition-all duration-200 active:scale-95 flex items-center justify-center gap-2
-         shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+         shadow-[0_4px_14px_0_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.4)] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
 }
 
 @utility btn-secondary {
-  @apply bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-5 rounded-xl
+  @apply bg-white hover:bg-slate-50/80 text-slate-700 font-semibold py-2.5 px-5 rounded-xl
          transition-all duration-200 active:scale-95 flex items-center justify-center gap-2
-         border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed;
+         border border-slate-200 shadow-sm hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 @utility btn-ghost {
-  @apply bg-transparent hover:bg-slate-100 text-slate-600 font-medium py-2 px-4 rounded-lg
+  @apply bg-transparent hover:bg-slate-100 text-slate-600 font-medium py-2 px-4 rounded-xl
          transition-all duration-150 flex items-center gap-2;
 }
 
 @utility btn-danger {
   @apply bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-5 rounded-xl
-         transition-all duration-200 active:scale-95 flex items-center justify-center gap-2;
+         transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm;
 }
 
 /* Form utilities */
 @utility form-input {
   @apply w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900
-         placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10
-         transition-all duration-200;
+         placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10
+         transition-all duration-200 shadow-sm;
 }
 
 @utility form-label {
-  @apply block text-sm font-medium text-slate-700 mb-1.5;
+  @apply block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5;
 }
 
 /* Badge utilities */
 @utility badge {
-  @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold;
 }
 
 @utility badge-green {
-  @apply badge bg-emerald-50 text-emerald-700 border border-emerald-100;
+  @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200/80;
 }
 
 @utility badge-blue {
-  @apply badge bg-blue-50 text-blue-700 border border-blue-100;
+  @apply badge bg-sky-50 text-sky-700 border border-sky-200/80;
 }
 
 @utility badge-amber {
-  @apply badge bg-amber-50 text-amber-700 border border-amber-100;
+  @apply badge bg-amber-50 text-amber-700 border border-amber-200/80;
 }
 
 @utility badge-red {
-  @apply badge bg-red-50 text-red-700 border border-red-100;
+  @apply badge bg-rose-50 text-rose-700 border border-rose-200/80;
 }
 
 @utility badge-slate {
   @apply badge bg-slate-100 text-slate-600 border border-slate-200;
 }
 
-/* Card */
-@utility card {
-  @apply bg-white rounded-2xl border border-slate-200 shadow-sm;
-}
-
 /* Gradient text */
 @utility gradient-text {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-600;
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 font-extrabold;
+}
+
+/* Bento grid utility */
+@utility bento-item {
+  @apply card-interactive p-6 flex flex-col justify-between overflow-hidden relative;
 }
 
 /* Scrollbar */
@@ -120,10 +134,7 @@
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-slate-200 rounded-full;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-300;
+  @apply bg-slate-200 rounded-full hover:bg-slate-300;
 }
 
 /* Skeleton animation */
@@ -133,7 +144,7 @@
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background: linear-gradient(90deg, #f8fafc 25%, #e2e8f0 50%, #f8fafc 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -142,8 +153,8 @@
 .status-pending { @apply badge-amber; }
 .status-accepted { @apply badge-green; }
 .status-rejected { @apply badge-red; }
-.status-completed { @apply badge bg-indigo-50 text-indigo-700 border border-indigo-100; }
-.status-in-progress { @apply badge bg-blue-50 text-blue-700 border border-blue-100; }
+.status-completed { @apply badge bg-indigo-50 text-indigo-700 border border-indigo-200/80; }
+.status-in-progress { @apply badge bg-sky-50 text-sky-700 border border-sky-200/80; }
 .status-cancelled { @apply badge-slate; }
 
 /* Line clamp utilities (fallback) */
@@ -151,9 +162,9 @@
 .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* Float animation for landing */
+/* Floating animation */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  50% { transform: translateY(-6px); }
 }
 .float-animation { animation: float 4s ease-in-out infinite; }

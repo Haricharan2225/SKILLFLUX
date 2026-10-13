@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import {
   Search, Filter, Code, Package, Users, Sparkles,
-  Send, MapPin, Star, ChevronDown, X, BookOpen
+  Send, MapPin, Star, ChevronDown, X, BookOpen, Plus
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Avatar, SkeletonCard, EmptyState, Modal } from '../components/UI';
@@ -22,7 +22,7 @@ import {
 const TABS = ['Skills', 'Products', 'Members'];
 
 const Marketplace = () => {
-  const { currentUser, userData } = useAuth();
+  const { currentUser, userData, updateUserData } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('Skills');
@@ -43,45 +43,97 @@ const Marketplace = () => {
   const [proposal, setProposal] = useState({ offeredType: 'Skill', offeredId: '', offeredTitle: '', description: '', exchangeType: 'Skill for Skill' });
   const [sending, setSending] = useState(false);
 
+  // Quick Listing States
+  const [listSkillOpen, setListSkillOpen] = useState(false);
+  const [listProductOpen, setListProductOpen] = useState(false);
+  const [submittingModal, setSubmittingModal] = useState(false);
+
+  const [newSkill, setNewSkill] = useState({
+    title: '',
+    description: '',
+    category: 'Web Development',
+    experienceLevel: 'Intermediate',
+    availability: 'Flexible',
+  });
+
+  const [newProduct, setNewProduct] = useState({
+    title: '',
+    description: '',
+    category: 'Electronics',
+    condition: 'Good',
+    desiredExchange: '',
+  });
+
   const fetchAll = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const [skillsSnap, productsSnap, usersSnap, mySkillsSnap, myProductsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'skills'), limit(50))),
-        getDocs(query(collection(db, 'products'), limit(50))),
-        getDocs(query(collection(db, 'users'), limit(50))),
-        getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid))),
-        getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid))),
-      ]);
+      let firestoreSkills = [];
+      let firestoreProducts = [];
+      let firestoreUsers = [];
+      let ms = [];
+      let mp = [];
 
-      const allSkills = skillsSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
+      try {
+        const [skillsSnap, productsSnap, usersSnap, mySkillsSnap, myProductsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'skills'), limit(50))),
+          getDocs(query(collection(db, 'products'), limit(50))),
+          getDocs(query(collection(db, 'users'), limit(50))),
+          getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid))),
+          getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid))),
+        ]);
+
+        firestoreSkills = skillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        firestoreProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        firestoreUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.uid !== currentUser.uid && !u.isDemo);
+        ms = mySkillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        mp = myProductsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (cloudErr) {
+        console.info('Marketplace cloud notice:', cloudErr.message);
+      }
+
+      // Community local listings
+      const commSkillsRaw = localStorage.getItem('skillflux_community_skills');
+      const commSkills = commSkillsRaw ? JSON.parse(commSkillsRaw) : [];
+
+      const commProductsRaw = localStorage.getItem('skillflux_community_products');
+      const commProducts = commProductsRaw ? JSON.parse(commProductsRaw) : [];
+
+      // User's own local skills & products
+      const localSkillsRaw = localStorage.getItem(`skillflux_local_skills_${currentUser.uid}`);
+      const localSkills = localSkillsRaw ? JSON.parse(localSkillsRaw) : [];
+      const localProductsRaw = localStorage.getItem(`skillflux_local_products_${currentUser.uid}`);
+      const localProducts = localProductsRaw ? JSON.parse(localProductsRaw) : [];
+
+      const combinedMySkills = [...localSkills, ...ms.filter(s => !localSkills.some(ls => ls.id === s.id))];
+      const combinedMyProducts = [...localProducts, ...mp.filter(p => !localProducts.some(lp => lp.id === p.id))];
+
+      setMySkills(combinedMySkills);
+      setMyProducts(combinedMyProducts);
+
+      // Combine all skills for marketplace
+      const allSkillsCombined = [...commSkills, ...firestoreSkills];
+      const uniqueSkills = Array.from(new Map(allSkillsCombined.map(s => [s.id || s.title, s])).values())
         .filter(s => s.userId !== currentUser.uid && s.status !== 'Inactive');
-      allSkills.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      uniqueSkills.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
 
-      const allProducts = productsSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
+      // Combine all products for marketplace
+      const allProductsCombined = [...commProducts, ...firestoreProducts];
+      const uniqueProducts = Array.from(new Map(allProductsCombined.map(p => [p.id || p.title, p])).values())
         .filter(p => p.userId !== currentUser.uid && p.status !== 'Unavailable');
-      allProducts.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.uid !== currentUser.uid && !u.isDemo);
-      const ms = mySkillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const mp = myProductsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      setMySkills(ms);
-      setMyProducts(mp);
+      uniqueProducts.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
 
       // Add demo items if empty
-      const finalSkills = allSkills.length > 0 ? allSkills : DEMO_SKILLS;
-      const finalProducts = allProducts.length > 0 ? allProducts : DEMO_PRODUCTS;
-      const finalUsers = allUsers.length > 0 ? allUsers : DEMO_USERS;
+      const finalSkills = uniqueSkills.length > 0 ? uniqueSkills : DEMO_SKILLS;
+      const finalProducts = uniqueProducts.length > 0 ? uniqueProducts : DEMO_PRODUCTS;
+      const finalUsers = firestoreUsers.length > 0 ? firestoreUsers : DEMO_USERS;
 
       setSkills(finalSkills);
       setProducts(finalProducts);
       setMembers(finalUsers);
 
       // Compute smart matches
-      const myOffered = [...ms.map(s => s.title), ...mp.map(p => p.title)].join(' ');
+      const myOffered = [...combinedMySkills.map(s => s.title), ...combinedMyProducts.map(p => p.title)].join(' ');
       const myWanted = [...(userData?.skillsWanted || []), ...(userData?.productsWanted || [])].join(' ');
 
       const skillMatches = finalSkills.map(s => ({
@@ -100,13 +152,141 @@ const Marketplace = () => {
 
       setMatches(combined);
     } catch (err) {
-      console.error(err);
+      console.error('Marketplace fetch error:', err);
     } finally {
       setLoading(false);
     }
   }, [currentUser, userData]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const handleQuickAddSkill = async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (!newSkill.title.trim()) {
+      toast.error('Please enter a skill title.');
+      return;
+    }
+
+    setSubmittingModal(true);
+    const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+    const tempId = `skill_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const skillItem = {
+      id: tempId,
+      title: newSkill.title.trim(),
+      description: newSkill.description.trim(),
+      category: newSkill.category || 'Web Development',
+      experienceLevel: newSkill.experienceLevel || 'Intermediate',
+      availability: newSkill.availability || 'Flexible',
+      userId: currentUser.uid,
+      userName: displayName,
+      status: 'Active',
+      createdAt: Date.now(),
+    };
+
+    // 1. Save to user's local skills
+    const userLocalKey = `skillflux_local_skills_${currentUser.uid}`;
+    const curUserSkills = JSON.parse(localStorage.getItem(userLocalKey) || '[]');
+    const nextUserSkills = [skillItem, ...curUserSkills.filter(s => s.id !== tempId)];
+    localStorage.setItem(userLocalKey, JSON.stringify(nextUserSkills));
+
+    // 2. Save to community skills pool
+    const commKey = 'skillflux_community_skills';
+    const commSkills = JSON.parse(localStorage.getItem(commKey) || '[]');
+    localStorage.setItem(commKey, JSON.stringify([skillItem, ...commSkills]));
+
+    // 3. Update my profile skillsOffered list
+    try {
+      const currentSkillsOffered = userData?.skillsOffered || [];
+      if (!currentSkillsOffered.includes(skillItem.title)) {
+        await updateUserData({ skillsOffered: [...currentSkillsOffered, skillItem.title] });
+      }
+    } catch (_) {}
+
+    setMySkills(prev => [skillItem, ...prev]);
+    setListSkillOpen(false);
+    setNewSkill({ title: '', description: '', category: 'Web Development', experienceLevel: 'Intermediate', availability: 'Flexible' });
+    toast.success('Skill listed successfully! 🚀');
+
+    // 4. Background cloud sync
+    try {
+      await addDoc(collection(db, 'skills'), {
+        title: skillItem.title,
+        description: skillItem.description,
+        category: skillItem.category,
+        experienceLevel: skillItem.experienceLevel,
+        availability: skillItem.availability,
+        userId: currentUser.uid,
+        userName: displayName,
+        status: 'Active',
+        createdAt: serverTimestamp(),
+      });
+    } catch (_) {}
+    finally {
+      setSubmittingModal(false);
+    }
+  };
+
+  const handleQuickAddProduct = async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (!newProduct.title.trim()) {
+      toast.error('Please enter a product title.');
+      return;
+    }
+
+    setSubmittingModal(true);
+    const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+    const tempId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const productItem = {
+      id: tempId,
+      title: newProduct.title.trim(),
+      description: newProduct.description.trim(),
+      category: newProduct.category || 'Electronics',
+      condition: newProduct.condition || 'Good',
+      desiredExchange: newProduct.desiredExchange.trim() || 'Any skill or product',
+      userId: currentUser.uid,
+      userName: displayName,
+      status: 'Available',
+      createdAt: Date.now(),
+    };
+
+    // 1. Save to user's local products
+    const userLocalKey = `skillflux_local_products_${currentUser.uid}`;
+    const curUserProducts = JSON.parse(localStorage.getItem(userLocalKey) || '[]');
+    const nextUserProducts = [productItem, ...curUserProducts.filter(p => p.id !== tempId)];
+    localStorage.setItem(userLocalKey, JSON.stringify(nextUserProducts));
+
+    // 2. Save to community products pool
+    const commKey = 'skillflux_community_products';
+    const commProducts = JSON.parse(localStorage.getItem(commKey) || '[]');
+    localStorage.setItem(commKey, JSON.stringify([productItem, ...commProducts]));
+
+    setMyProducts(prev => [productItem, ...prev]);
+    setListProductOpen(false);
+    setNewProduct({ title: '', description: '', category: 'Electronics', condition: 'Good', desiredExchange: '' });
+    toast.success('Product listed successfully! 📦');
+
+    // 3. Background cloud sync
+    try {
+      await addDoc(collection(db, 'products'), {
+        title: productItem.title,
+        description: productItem.description,
+        category: productItem.category,
+        condition: productItem.condition,
+        desiredExchange: productItem.desiredExchange,
+        userId: currentUser.uid,
+        userName: displayName,
+        status: 'Available',
+        createdAt: serverTimestamp(),
+      });
+    } catch (_) {}
+    finally {
+      setSubmittingModal(false);
+    }
+  };
 
   const handlePropose = async (e) => {
     e.preventDefault();
@@ -179,9 +359,25 @@ const Marketplace = () => {
     <div className="pt-20 pb-12 min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-black text-slate-900">Discover & Exchange</h1>
-          <p className="text-slate-500 text-sm mt-1">Browse skills, products, and community members.</p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900">Discover & Exchange</h1>
+            <p className="text-slate-500 text-sm mt-1">Browse skills, products, and community members — 100% zero-money barter.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setListSkillOpen(true)}
+              className="btn-primary text-xs py-2 px-3.5 shadow-sm"
+            >
+              <Plus size={15} /> List a Skill
+            </button>
+            <button
+              onClick={() => setListProductOpen(true)}
+              className="btn-secondary text-xs py-2 px-3.5 shadow-sm"
+            >
+              <Plus size={15} /> List a Product
+            </button>
+          </div>
         </div>
 
         {/* Smart Matches */}
@@ -451,6 +647,147 @@ const Marketplace = () => {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* List a Skill Modal */}
+      <Modal open={listSkillOpen} onClose={() => setListSkillOpen(false)} title="List a Skill for Exchange">
+        <form onSubmit={handleQuickAddSkill} className="space-y-4">
+          <div>
+            <label className="form-label">Skill Title *</label>
+            <input
+              className="form-input"
+              placeholder="e.g. Full-Stack React & Node Development"
+              value={newSkill.title}
+              onChange={e => setNewSkill(prev => ({ ...prev, title: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="form-label">What can you teach or help with? *</label>
+            <textarea
+              className="form-input resize-none"
+              rows={3}
+              placeholder="Describe your expertise, projects you can help build, or what you're open to teaching..."
+              value={newSkill.description}
+              onChange={e => setNewSkill(prev => ({ ...prev, description: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">Category</label>
+              <select
+                className="form-input"
+                value={newSkill.category}
+                onChange={e => setNewSkill(prev => ({ ...prev, category: e.target.value }))}
+              >
+                {SKILL_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Experience Level</label>
+              <select
+                className="form-input"
+                value={newSkill.experienceLevel}
+                onChange={e => setNewSkill(prev => ({ ...prev, experienceLevel: e.target.value }))}
+              >
+                {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(l => <option key={l}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Availability</label>
+            <select
+              className="form-input"
+              value={newSkill.availability}
+              onChange={e => setNewSkill(prev => ({ ...prev, availability: e.target.value }))}
+            >
+              {['Flexible', 'Weekdays', 'Weekends', 'Evenings Only', 'Limited'].map(o => <option key={o}>{o}</option>)}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+            <button type="button" onClick={() => setListSkillOpen(false)} className="btn-secondary flex-1">
+              Cancel
+            </button>
+            <button type="submit" disabled={submittingModal} className="btn-primary flex-1">
+              {submittingModal ? 'Listing...' : 'List Skill'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* List a Product Modal */}
+      <Modal open={listProductOpen} onClose={() => setListProductOpen(false)} title="List a Product for Exchange">
+        <form onSubmit={handleQuickAddProduct} className="space-y-4">
+          <div>
+            <label className="form-label">Product Name *</label>
+            <input
+              className="form-input"
+              placeholder="e.g. Mechanical Keyboard, Drawing Tablet"
+              value={newProduct.title}
+              onChange={e => setNewProduct(prev => ({ ...prev, title: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="form-label">Description & Condition details *</label>
+            <textarea
+              className="form-input resize-none"
+              rows={3}
+              placeholder="Item specifications, usage history, and condition..."
+              value={newProduct.description}
+              onChange={e => setNewProduct(prev => ({ ...prev, description: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">Category</label>
+              <select
+                className="form-input"
+                value={newProduct.category}
+                onChange={e => setNewProduct(prev => ({ ...prev, category: e.target.value }))}
+              >
+                {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Condition</label>
+              <select
+                className="form-input"
+                value={newProduct.condition}
+                onChange={e => setNewProduct(prev => ({ ...prev, condition: e.target.value }))}
+              >
+                {PRODUCT_CONDITIONS.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Desired Exchange</label>
+            <input
+              className="form-input"
+              placeholder="e.g. React mentoring or UI design"
+              value={newProduct.desiredExchange}
+              onChange={e => setNewProduct(prev => ({ ...prev, desiredExchange: e.target.value }))}
+            />
+          </div>
+
+          <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+            <button type="button" onClick={() => setListProductOpen(false)} className="btn-secondary flex-1">
+              Cancel
+            </button>
+            <button type="submit" disabled={submittingModal} className="btn-primary flex-1">
+              {submittingModal ? 'Listing...' : 'List Product'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

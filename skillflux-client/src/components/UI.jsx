@@ -112,49 +112,99 @@ export const FormSelect = ({ label, error, children, ...props }) => (
   </div>
 );
 
-export const TagInput = ({ tags, onChange, placeholder, suggestions = [] }) => {
+export const TagInput = ({ tags = [], onChange, placeholder, suggestions = [] }) => {
   const [input, setInput] = React.useState('');
 
+  const safeTags = Array.isArray(tags) ? tags : [];
+
   const addTag = (tag) => {
-    const trimmed = tag.trim();
-    if (trimmed && !tags.includes(trimmed) && tags.length < 10) {
-      onChange([...tags, trimmed]);
+    const trimmed = (tag || '').trim();
+    if (trimmed && !safeTags.includes(trimmed) && safeTags.length < 15) {
+      onChange([...safeTags, trimmed]);
     }
     setInput('');
   };
 
-  const removeTag = (t) => onChange(tags.filter(x => x !== t));
+  const removeTag = (t) => onChange(safeTags.filter(x => x !== t));
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(input); }
-    if (e.key === 'Backspace' && !input && tags.length) removeTag(tags[tags.length - 1]);
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(input);
+    }
+    if (e.key === 'Backspace' && !input && safeTags.length) {
+      removeTag(safeTags[safeTags.length - 1]);
+    }
   };
 
-  const filtered = suggestions.filter(s => s.toLowerCase().includes(input.toLowerCase()) && !tags.includes(s)).slice(0, 5);
+  const filtered = suggestions.filter(s => s.toLowerCase().includes(input.toLowerCase()) && !safeTags.includes(s)).slice(0, 5);
+  const quickPillSuggestions = suggestions.filter(s => !safeTags.includes(s)).slice(0, 4);
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-1.5 p-2 bg-white border border-slate-200 rounded-xl focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/10 min-h-[44px]">
-        {tags.map(t => (
-          <span key={t} className="badge-green flex items-center gap-1">
-            {t}
-            <button type="button" onClick={() => removeTag(t)} className="ml-0.5 hover:text-red-500">×</button>
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white border border-slate-200 rounded-xl focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/10 min-h-[46px] transition-all">
+        {safeTags.map(t => (
+          <span key={t} className="badge-green flex items-center gap-1.5 py-1 px-2.5 text-xs">
+            <span>{t}</span>
+            <button
+              type="button"
+              onClick={() => removeTag(t)}
+              className="text-emerald-700/60 hover:text-rose-600 transition-colors font-bold text-sm"
+              title="Remove"
+            >
+              ×
+            </button>
           </span>
         ))}
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={tags.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-[100px] outline-none text-sm bg-transparent"
-        />
+        <div className="flex-1 flex items-center min-w-[140px] gap-1">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => { if (input.trim()) addTag(input); }}
+            placeholder={safeTags.length === 0 ? placeholder : 'Add another...'}
+            className="w-full outline-none text-sm bg-transparent px-1 py-0.5 text-slate-800 placeholder:text-slate-400"
+          />
+          {input.trim() && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); addTag(input); }}
+              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-xs font-semibold shadow-xs flex-shrink-0 transition-all"
+            >
+              + Add
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Autocomplete dropdown */}
       {input && filtered.length > 0 && (
-        <div className="border border-slate-200 rounded-xl mt-1 shadow-sm bg-white">
+        <div className="border border-slate-200 rounded-xl shadow-lg bg-white overflow-hidden z-20 relative">
           {filtered.map(s => (
-            <button key={s} type="button" onClick={() => addTag(s)}
-              className="block w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 first:rounded-t-xl last:rounded-b-xl">
-              {s}
+            <button
+              key={s}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); addTag(s); }}
+              className="block w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors border-b border-slate-50 last:border-b-0"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Quick click suggestions */}
+      {!input && quickPillSuggestions.length > 0 && safeTags.length < 5 && (
+        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+          <span className="text-[11px] text-slate-400 font-medium">Suggestions:</span>
+          {quickPillSuggestions.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => addTag(s)}
+              className="text-[11px] bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200/60 rounded-full px-2 py-0.5 transition-all cursor-pointer font-medium"
+            >
+              + {s}
             </button>
           ))}
         </div>

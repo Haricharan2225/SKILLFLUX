@@ -75,37 +75,72 @@ export const AuthProvider = ({ children }) => {
 
   const updateUserData = async (updates) => {
     if (!currentUser) return;
-    const ref = doc(db, 'users', currentUser.uid);
-    const safeUpdates = { ...updates, updatedAt: serverTimestamp() };
+    const safeUpdates = { ...updates };
     // Prevent role escalation
     delete safeUpdates.role;
     delete safeUpdates.uid;
-    await updateDoc(ref, safeUpdates);
-    setUserData(prev => ({ ...prev, ...safeUpdates }));
+
+    // 1. Optimistically update state & local storage immediately
+    setUserData(prev => {
+      const merged = { ...(prev || {}), ...safeUpdates };
+      try {
+        localStorage.setItem(`skillflux_profile_${currentUser.uid}`, JSON.stringify(merged));
+      } catch (err) {
+        console.warn('LocalStorage save error:', err);
+      }
+      return merged;
+    });
+
+    // 2. Sync to Firestore in the background
+    try {
+      const ref = doc(db, 'users', currentUser.uid);
+      await setDoc(ref, { ...safeUpdates, updatedAt: serverTimestamp() }, { merge: true });
+    } catch (cloudErr) {
+      console.info('Firestore profile sync notice (saved locally):', cloudErr.code || cloudErr.message);
+    }
   };
 
   const refreshUserData = async () => {
     if (!currentUser) return;
-    const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-    if (userDoc.exists()) setUserData(userDoc.data());
+    try {
+      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+      if (userDoc.exists()) setUserData(userDoc.data());
+    } catch (err) {
+      console.info('Notice refreshing user data:', err.message);
+    }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
+        // Retrieve any local cached profile
+        let cached = null;
+        try {
+          const raw = localStorage.getItem(`skillflux_profile_${user.uid}`);
+          if (raw) cached = JSON.parse(raw);
+        } catch (_) {}
+
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
             const data = userDoc.data();
-            setUserData({
+            const resolved = {
               ...data,
-              displayName: data.displayName || user.displayName || user.email?.split('@')[0] || 'User'
-            });
+              displayName: data.displayName || user.displayName || user.email?.split('@')[0] || 'User',
+              skillsOffered: data.skillsOffered || cached?.skillsOffered || [],
+              skillsWanted: data.skillsWanted || cached?.skillsWanted || [],
+              productsOffered: data.productsOffered || cached?.productsOffered || [],
+              productsWanted: data.productsWanted || cached?.productsWanted || [],
+            };
+            setUserData(resolved);
+            try {
+              localStorage.setItem(`skillflux_profile_${user.uid}`, JSON.stringify(resolved));
+            } catch (_) {}
           } else {
-            // Create profile if missing (edge case)
+            // Create profile if missing
             const role = user.email === ADMIN_EMAIL ? 'admin' : 'user';
-            const fallback = {
+            const fallback = cached || {
               uid: user.uid,
               email: user.email,
               displayName: user.displayName || user.email?.split('@')[0] || 'User',
@@ -125,16 +160,22 @@ export const AuthProvider = ({ children }) => {
               isDemo: false,
               createdAt: serverTimestamp()
             };
-            await setDoc(doc(db, 'users', user.uid), fallback);
+            try {
+              await setDoc(doc(db, 'users', user.uid), fallback, { merge: true });
+            } catch (_) {}
             setUserData(fallback);
           }
         } catch (e) {
-          console.error('Error loading user data:', e);
-          setUserData({
+          console.warn('Notice loading user data from cloud (using local cache):', e.message);
+          const role = user.email === ADMIN_EMAIL ? 'admin' : 'user';
+          setUserData(cached || {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName || user.email?.split('@')[0] || 'User',
-            role: user.email === ADMIN_EMAIL ? 'admin' : 'user',
+            role,
+            bio: '',
+            location: '',
+            avatar: '',
             skillsOffered: [],
             skillsWanted: [],
             productsOffered: [],

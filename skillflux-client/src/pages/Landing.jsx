@@ -89,22 +89,45 @@ const Landing = () => {
               Explore Community
             </Link>
           </div>
+
+          {/* Modern Live Trade Preview Card */}
+          <div className="mt-12 max-w-3xl mx-auto card-interactive p-5 sm:p-6 bg-white/90 backdrop-blur-md border border-slate-200/80 text-left">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                Live Exchange Showcase
+              </span>
+              <span className="badge-green text-xs font-bold">98% Match Compatibility</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+              <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100/80">
+                <p className="text-xs text-emerald-800 font-bold uppercase tracking-wider">Aarav S. Offers</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">React.js & Fullstack Mentoring</p>
+                <p className="text-xs text-slate-500 mt-1">Needs: UI/UX Wireframing in Figma</p>
+              </div>
+              <div className="p-3.5 bg-teal-50/60 rounded-xl border border-teal-100/80">
+                <p className="text-xs text-teal-800 font-bold uppercase tracking-wider">Priya R. Offers</p>
+                <p className="font-bold text-slate-900 text-sm mt-0.5">UI/UX & Design Systems</p>
+                <p className="text-xs text-slate-500 mt-1">Needs: React Frontend Integration</p>
+              </div>
+            </div>
+          </div>
         </motion.div>
 
-        {/* Stats bar */}
+        {/* Stats Bento */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-          className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto"
+          className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto"
         >
           {[
-            { label: 'Members', value: stats.users + '+' },
-            { label: 'Skills Listed', value: stats.skills + '+' },
-            { label: 'Products', value: stats.products + '+' },
-            { label: 'Exchanges Done', value: stats.exchanges + '+' },
+            { label: 'Verified Members', value: stats.users + '+' },
+            { label: 'Skills Available', value: stats.skills + '+' },
+            { label: 'Products Listed', value: stats.products + '+' },
+            { label: 'Completed Barters', value: stats.exchanges + '+' },
           ].map(s => (
-            <div key={s.label} className="card p-4 text-center">
-              <p className="text-2xl font-black text-emerald-600">{s.value}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+            <div key={s.label} className="card-interactive p-4 sm:p-5 text-center">
+              <p className="text-2xl sm:text-3xl font-black gradient-text">{s.value}</p>
+              <p className="text-xs font-semibold text-slate-500 mt-1">{s.label}</p>
             </div>
           ))}
         </motion.div>

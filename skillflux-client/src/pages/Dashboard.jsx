@@ -1,60 +1,109 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import {
   collection, query, where, getDocs, addDoc, deleteDoc,
-  doc, serverTimestamp, orderBy, limit, onSnapshot
+  doc, serverTimestamp, limit
 } from 'firebase/firestore';
 import {
-  Plus, Trash2, Code, Package, Bell, Repeat2, MessageCircle,
-  CheckCircle, XCircle, Users, Star, TrendingUp, Edit3, LayoutDashboard,
-  Compass, User
+  Plus, Trash2, Code, Package, Repeat2, MessageCircle,
+  CheckCircle, XCircle, Users, Star, Sparkles, Compass,
+  ArrowRight, ShieldCheck, Zap, Layers, Clock
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { Avatar, SkeletonCard, EmptyState, Modal, StatCard } from '../components/UI';
-import { SKILL_CATEGORIES, PRODUCT_CATEGORIES, PRODUCT_CONDITIONS, timeAgo, getStatusColor } from '../utils/helpers';
+import { SkeletonCard, Modal } from '../components/UI';
+import {
+  SKILL_CATEGORIES, PRODUCT_CATEGORIES, PRODUCT_CONDITIONS,
+  getStatusColor, timeAgo, getInitials, getAvatarColor
+} from '../utils/helpers';
+
+const LOCAL_SKILLS_KEY = 'skillflux_local_skills';
+const LOCAL_PRODUCTS_KEY = 'skillflux_local_products';
 
 const Dashboard = () => {
-  const { currentUser, userData } = useAuth();
+  const { currentUser, userData, updateUserData } = useAuth();
   const navigate = useNavigate();
 
   const [skills, setSkills] = useState([]);
   const [products, setProducts] = useState([]);
   const [exchanges, setExchanges] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('skills');
 
   const [addSkillOpen, setAddSkillOpen] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
 
-  const [newSkill, setNewSkill] = useState({ title: '', description: '', category: 'Web Development', experienceLevel: 'Intermediate', availability: 'Flexible' });
-  const [newProduct, setNewProduct] = useState({ title: '', description: '', category: 'Electronics', condition: 'Good', desiredExchange: '', imageURL: '' });
+  const [newSkill, setNewSkill] = useState({
+    title: '',
+    description: '',
+    category: 'Web Development',
+    experienceLevel: 'Intermediate',
+    availability: 'Flexible'
+  });
+
+  const [newProduct, setNewProduct] = useState({
+    title: '',
+    description: '',
+    category: 'Electronics',
+    condition: 'Good',
+    desiredExchange: '',
+    imageURL: ''
+  });
+
   const [submitting, setSubmitting] = useState(false);
 
+  // Load from both Firestore and LocalStorage
   const fetchData = async () => {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const [skillsSnap, productsSnap, sentSnap, receivedSnap] = await Promise.all([
-        getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid))),
-        getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid))),
-        getDocs(query(collection(db, 'exchanges'), where('senderId', '==', currentUser.uid), limit(50))),
-        getDocs(query(collection(db, 'exchanges'), where('recipientId', '==', currentUser.uid), limit(50))),
-      ]);
-      const mySkills = skillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      mySkills.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setSkills(mySkills);
+      // 1. Get from LocalStorage
+      const localSkillsRaw = localStorage.getItem(`${LOCAL_SKILLS_KEY}_${currentUser.uid}`);
+      const localSkills = localSkillsRaw ? JSON.parse(localSkillsRaw) : [];
 
-      const myProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      myProducts.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setProducts(myProducts);
+      const localProductsRaw = localStorage.getItem(`${LOCAL_PRODUCTS_KEY}_${currentUser.uid}`);
+      const localProducts = localProductsRaw ? JSON.parse(localProductsRaw) : [];
+
+      // 2. Try Firestore fetch
+      let firestoreSkills = [];
+      let firestoreProducts = [];
+      let firestoreExchanges = [];
+
+      try {
+        const [skillsSnap, productsSnap, sentSnap, receivedSnap] = await Promise.all([
+          getDocs(query(collection(db, 'skills'), where('userId', '==', currentUser.uid))),
+          getDocs(query(collection(db, 'products'), where('userId', '==', currentUser.uid))),
+          getDocs(query(collection(db, 'exchanges'), where('senderId', '==', currentUser.uid), limit(50))),
+          getDocs(query(collection(db, 'exchanges'), where('recipientId', '==', currentUser.uid), limit(50))),
+        ]);
+
+        firestoreSkills = skillsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        firestoreProducts = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const allEx = [...sentSnap.docs, ...receivedSnap.docs].map(d => ({ id: d.id, ...d.data() }));
+        const unique = Array.from(new Map(allEx.map(e => [e.id, e])).values());
+        unique.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        firestoreExchanges = unique;
+      } catch (err) {
+        console.warn('Firestore load notice:', err.message);
+      }
 
       // Merge and deduplicate
-      const all = [...sentSnap.docs, ...receivedSnap.docs].map(d => ({ id: d.id, ...d.data() }));
-      const unique = Array.from(new Map(all.map(e => [e.id, e])).values());
-      unique.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setExchanges(unique);
+      const combinedSkillsMap = new Map();
+      [...localSkills, ...firestoreSkills].forEach(s => combinedSkillsMap.set(s.id || s.title, s));
+      const mergedSkills = Array.from(combinedSkillsMap.values());
+      mergedSkills.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+      setSkills(mergedSkills);
+
+      const combinedProductsMap = new Map();
+      [...localProducts, ...firestoreProducts].forEach(p => combinedProductsMap.set(p.id || p.title, p));
+      const mergedProducts = Array.from(combinedProductsMap.values());
+      mergedProducts.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+      setProducts(mergedProducts);
+
+      setExchanges(firestoreExchanges);
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
@@ -70,33 +119,66 @@ const Dashboard = () => {
       toast.error('You must be signed in.');
       return;
     }
-    setSubmitting(true);
-    try {
-      const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
-      const userAvatar = userData?.avatar || currentUser.photoURL || '';
+    if (!newSkill.title.trim()) {
+      toast.error('Please enter a skill title.');
+      return;
+    }
 
-      const skillData = {
-        title: newSkill.title?.trim() || '',
-        description: newSkill.description?.trim() || '',
-        category: newSkill.category || 'Web Development',
-        experienceLevel: newSkill.experienceLevel || 'Intermediate',
-        availability: newSkill.availability || 'Flexible',
-        userId: currentUser.uid,
-        userName: displayName,
-        userAvatar: userAvatar,
-        status: 'Active',
+    setSubmitting(true);
+    const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+    const userAvatar = userData?.avatar || currentUser.photoURL || '';
+    const tempId = `skill_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const skillItem = {
+      id: tempId,
+      title: newSkill.title.trim(),
+      description: newSkill.description.trim(),
+      category: newSkill.category || 'Web Development',
+      experienceLevel: newSkill.experienceLevel || 'Intermediate',
+      availability: newSkill.availability || 'Flexible',
+      userId: currentUser.uid,
+      userName: displayName,
+      userAvatar: userAvatar,
+      status: 'Active',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    // 1. Optimistic save to state and LocalStorage immediately
+    const updatedSkills = [skillItem, ...skills.filter(s => s.id !== tempId)];
+    setSkills(updatedSkills);
+    try {
+      localStorage.setItem(`${LOCAL_SKILLS_KEY}_${currentUser.uid}`, JSON.stringify(updatedSkills));
+      // Save to community skills pool for marketplace discovery
+      const commSkills = JSON.parse(localStorage.getItem('skillflux_community_skills') || '[]');
+      localStorage.setItem('skillflux_community_skills', JSON.stringify([skillItem, ...commSkills]));
+      // Update user profile skillsOffered list
+      const curOffered = userData?.skillsOffered || [];
+      if (!curOffered.includes(skillItem.title)) {
+        updateUserData({ skillsOffered: [...curOffered, skillItem.title] });
+      }
+    } catch (e) {
+      console.warn('Storage sync error:', e);
+    }
+
+    setAddSkillOpen(false);
+    setNewSkill({ title: '', description: '', category: 'Web Development', experienceLevel: 'Intermediate', availability: 'Flexible' });
+    toast.success('Skill listed successfully! 🚀');
+
+    // 2. Sync to Firestore in the background
+    try {
+      const { id: _, ...firestoreData } = skillItem;
+      const docRef = await addDoc(collection(db, 'skills'), {
+        ...firestoreData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      };
-
-      const ref = await addDoc(collection(db, 'skills'), skillData);
-      setSkills(prev => [{ id: ref.id, ...skillData }, ...prev]);
-      setAddSkillOpen(false);
-      setNewSkill({ title: '', description: '', category: 'Web Development', experienceLevel: 'Intermediate', availability: 'Flexible' });
-      toast.success('Skill listed successfully!');
-    } catch (err) {
-      console.error('Failed to add skill:', err);
-      toast.error(err?.message || 'Failed to add skill.');
+      });
+      // Replace with genuine Firestore ID
+      const syncedSkills = updatedSkills.map(s => s.id === tempId ? { ...s, id: docRef.id } : s);
+      setSkills(syncedSkills);
+      localStorage.setItem(`${LOCAL_SKILLS_KEY}_${currentUser.uid}`, JSON.stringify(syncedSkills));
+    } catch (cloudErr) {
+      console.info('Cloud sync notice (saved locally):', cloudErr.code || cloudErr.message);
     } finally {
       setSubmitting(false);
     }
@@ -108,34 +190,67 @@ const Dashboard = () => {
       toast.error('You must be signed in.');
       return;
     }
-    setSubmitting(true);
-    try {
-      const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
-      const userAvatar = userData?.avatar || currentUser.photoURL || '';
+    if (!newProduct.title.trim()) {
+      toast.error('Please enter a product name.');
+      return;
+    }
 
-      const productData = {
-        title: newProduct.title?.trim() || '',
-        description: newProduct.description?.trim() || '',
-        category: newProduct.category || 'Electronics',
-        condition: newProduct.condition || 'Good',
-        desiredExchange: newProduct.desiredExchange?.trim() || '',
-        imageURL: newProduct.imageURL?.trim() || '',
-        userId: currentUser.uid,
-        userName: displayName,
-        userAvatar: userAvatar,
-        status: 'Available',
+    setSubmitting(true);
+    const displayName = userData?.displayName || currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+    const userAvatar = userData?.avatar || currentUser.photoURL || '';
+    const tempId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const productItem = {
+      id: tempId,
+      title: newProduct.title.trim(),
+      description: newProduct.description.trim(),
+      category: newProduct.category || 'Electronics',
+      condition: newProduct.condition || 'Good',
+      desiredExchange: newProduct.desiredExchange.trim() || 'Any skill or product',
+      imageURL: newProduct.imageURL.trim(),
+      userId: currentUser.uid,
+      userName: displayName,
+      userAvatar: userAvatar,
+      status: 'Available',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    // 1. Optimistic save to state and LocalStorage
+    // 1. Optimistic save to state and LocalStorage immediately
+    const updatedProducts = [productItem, ...products.filter(p => p.id !== tempId)];
+    setProducts(updatedProducts);
+    try {
+      localStorage.setItem(`${LOCAL_PRODUCTS_KEY}_${currentUser.uid}`, JSON.stringify(updatedProducts));
+      // Save to community products pool for marketplace discovery
+      const commProds = JSON.parse(localStorage.getItem('skillflux_community_products') || '[]');
+      localStorage.setItem('skillflux_community_products', JSON.stringify([productItem, ...commProds]));
+      // Update profile
+      const curOffered = userData?.productsOffered || [];
+      if (!curOffered.includes(productItem.title)) {
+        updateUserData({ productsOffered: [...curOffered, productItem.title] });
+      }
+    } catch (e) {
+      console.warn('Storage sync error:', e);
+    }
+
+    setAddProductOpen(false);
+    setNewProduct({ title: '', description: '', category: 'Electronics', condition: 'Good', desiredExchange: '', imageURL: '' });
+    toast.success('Product listed successfully! 📦');
+
+    // 2. Sync to Firestore in the background
+    try {
+      const { id: _, ...firestoreData } = productItem;
+      const docRef = await addDoc(collection(db, 'products'), {
+        ...firestoreData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      };
-
-      const ref = await addDoc(collection(db, 'products'), productData);
-      setProducts(prev => [{ id: ref.id, ...productData }, ...prev]);
-      setAddProductOpen(false);
-      setNewProduct({ title: '', description: '', category: 'Electronics', condition: 'Good', desiredExchange: '', imageURL: '' });
-      toast.success('Product listed successfully!');
-    } catch (err) {
-      console.error('Failed to add product:', err);
-      toast.error(err?.message || 'Failed to add product.');
+      });
+      const syncedProducts = updatedProducts.map(p => p.id === tempId ? { ...p, id: docRef.id } : p);
+      setProducts(syncedProducts);
+      localStorage.setItem(`${LOCAL_PRODUCTS_KEY}_${currentUser.uid}`, JSON.stringify(syncedProducts));
+    } catch (cloudErr) {
+      console.info('Cloud sync notice (saved locally):', cloudErr.code || cloudErr.message);
     } finally {
       setSubmitting(false);
     }
@@ -144,316 +259,498 @@ const Dashboard = () => {
   const handleDelete = async (type, id) => {
     if (!window.confirm(`Remove this ${type === 'skills' ? 'skill' : 'product'}?`)) return;
     try {
-      await deleteDoc(doc(db, type, id));
-      if (type === 'skills') setSkills(prev => prev.filter(s => s.id !== id));
-      else setProducts(prev => prev.filter(p => p.id !== id));
-      toast.success('Removed successfully.');
-    } catch { toast.error('Failed to remove.'); }
-  };
-
-  const handleExchangeAction = async (exchangeId, newStatus) => {
-    try {
-      await import('firebase/firestore').then(({ updateDoc }) => updateDoc(doc(db, 'exchanges', exchangeId), {
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      }));
-      setExchanges(prev => prev.map(e => e.id === exchangeId ? { ...e, status: newStatus } : e));
-      toast.success(`Exchange ${newStatus.toLowerCase()}.`);
-      if (newStatus === 'Accepted') {
-        // Create chat conversation
-        const ex = exchanges.find(e => e.id === exchangeId);
-        if (ex) {
-          const chatRef = await addDoc(collection(db, 'chats'), {
-            exchangeId,
-            participants: [ex.senderId, ex.recipientId],
-            participantNames: { [ex.senderId]: ex.senderName, [ex.recipientId]: ex.recipientName },
-            lastMessage: '',
-            lastMessageAt: serverTimestamp(),
-            createdAt: serverTimestamp(),
-          });
-        }
+      if (type === 'skills') {
+        const next = skills.filter(s => s.id !== id);
+        setSkills(next);
+        localStorage.setItem(`${LOCAL_SKILLS_KEY}_${currentUser.uid}`, JSON.stringify(next));
+        const commSkills = JSON.parse(localStorage.getItem('skillflux_community_skills') || '[]');
+        localStorage.setItem('skillflux_community_skills', JSON.stringify(commSkills.filter(s => s.id !== id)));
+      } else {
+        const next = products.filter(p => p.id !== id);
+        setProducts(next);
+        localStorage.setItem(`${LOCAL_PRODUCTS_KEY}_${currentUser.uid}`, JSON.stringify(next));
+        const commProds = JSON.parse(localStorage.getItem('skillflux_community_products') || '[]');
+        localStorage.setItem('skillflux_community_products', JSON.stringify(commProds.filter(p => p.id !== id)));
       }
-    } catch { toast.error('Action failed.'); }
+      // Try Firestore delete
+      try { await deleteDoc(doc(db, type, id)); } catch (_) {}
+      toast.success('Removed successfully.');
+    } catch {
+      toast.error('Failed to remove.');
+    }
   };
 
+  const displayName = userData?.displayName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Member';
   const pendingReceived = exchanges.filter(e => e.recipientId === currentUser?.uid && e.status === 'Pending');
-  const active = exchanges.filter(e => ['Accepted', 'In Progress'].includes(e.status));
-  const completed = exchanges.filter(e => e.status === 'Completed').length;
+  const activeExchanges = exchanges.filter(e => ['Accepted', 'In Progress'].includes(e.status));
+  const completedExchanges = exchanges.filter(e => e.status === 'Completed').length;
 
   return (
-    <div className="pt-20 pb-12 min-h-screen bg-slate-50">
+    <div className="pt-24 pb-16 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900">
-              Welcome back, {userData?.displayName?.split(' ')[0]} 👋
-            </h1>
-            <p className="text-slate-500 text-sm mt-1">Here's what's happening with your exchanges.</p>
-          </div>
-          <div className="flex gap-2">
-            <Link to="/marketplace" className="btn-secondary text-sm">
-              <Compass size={16} /> Discover
-            </Link>
-            <Link to={`/profile/${currentUser?.uid}`} className="btn-ghost text-sm">
-              <User size={16} /> Profile
-            </Link>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="card p-4">
-            <p className="text-2xl font-black text-slate-900">{skills.length}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Active Skills</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-2xl font-black text-slate-900">{products.length}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Listed Products</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-2xl font-black text-emerald-600">{active.length}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Active Exchanges</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-2xl font-black text-slate-900">{completed}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Completed</p>
-          </div>
-        </div>
+        {/* Hero Banner Bento */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 text-white p-6 sm:p-8 md:p-10 mb-8 shadow-xl">
+          <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-1/3 -mb-20 w-72 h-72 rounded-full bg-teal-500/10 blur-2xl pointer-events-none" />
 
-        {/* Onboarding prompt */}
-        {!userData?.onboardingComplete && (
-          <div className="card p-5 mb-6 border-l-4 border-l-emerald-500 flex items-center justify-between gap-4">
+          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="flex items-center gap-4 sm:gap-5">
+              <div className={`w-16 h-16 sm:w-20 sm:h-20 ${getAvatarColor(currentUser?.uid || '')} rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg border-2 border-white/20 flex-shrink-0`}>
+                {userData?.avatar
+                  ? <img src={userData.avatar} className="w-full h-full rounded-2xl object-cover" alt="" />
+                  : getInitials(displayName)
+                }
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <h1 className="text-2xl sm:text-3xl font-black text-white">
+                    {displayName}
+                  </h1>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    <ShieldCheck size={12} /> Verified Trader
+                  </span>
+                </div>
+                <p className="text-slate-300 text-sm">
+                  {userData?.location ? `📍 ${userData.location} · ` : ''}Zero-Money Barter Member
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                onClick={() => setAddSkillOpen(true)}
+                className="btn-primary py-3 px-5 text-sm flex-1 sm:flex-initial"
+              >
+                <Plus size={16} /> List Skill
+              </button>
+              <button
+                onClick={() => setAddProductOpen(true)}
+                className="btn-secondary py-3 px-5 text-sm flex-1 sm:flex-initial"
+              >
+                <Package size={16} /> List Product
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-8 pt-6 border-t border-white/10">
             <div>
-              <p className="font-semibold text-slate-900">Complete your profile</p>
-              <p className="text-sm text-slate-500">Add your skills and preferences to get better exchange matches.</p>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Skills Offered</p>
+              <p className="text-2xl sm:text-3xl font-black text-emerald-400 mt-0.5">{skills.length}</p>
             </div>
-            <Link to="/onboarding" className="btn-primary text-sm flex-shrink-0">Set up profile</Link>
-          </div>
-        )}
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Skills */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-slate-900 flex items-center gap-2"><Code size={18} className="text-emerald-600" /> My Skills</h2>
-              <button onClick={() => setAddSkillOpen(true)} className="btn-primary text-xs py-1.5 px-3">
-                <Plus size={14} /> Add
-              </button>
+            <div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Products Listed</p>
+              <p className="text-2xl sm:text-3xl font-black text-teal-300 mt-0.5">{products.length}</p>
             </div>
-            {loading ? <SkeletonCard /> : skills.length === 0 ? (
-              <div className="card p-6 text-center">
-                <Code size={28} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No skills listed yet.</p>
-                <button onClick={() => setAddSkillOpen(true)} className="text-emerald-600 text-sm font-medium mt-2 hover:underline">Add your first skill →</button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {skills.map(skill => (
-                  <div key={skill.id} className="card p-4 flex items-start justify-between group">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900 text-sm truncate">{skill.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="badge-green text-xs">{skill.category}</span>
-                        <span className="badge-slate text-xs">{skill.experienceLevel}</span>
-                      </div>
-                    </div>
-                    <button onClick={() => handleDelete('skills', skill.id)}
-                      className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 ml-2 flex-shrink-0">
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Products */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-slate-900 flex items-center gap-2"><Package size={18} className="text-blue-600" /> My Products</h2>
-              <button onClick={() => setAddProductOpen(true)} className="btn-primary text-xs py-1.5 px-3">
-                <Plus size={14} /> Add
-              </button>
+            <div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Swaps</p>
+              <p className="text-2xl sm:text-3xl font-black text-amber-300 mt-0.5">{activeExchanges.length}</p>
             </div>
-            {loading ? <SkeletonCard /> : products.length === 0 ? (
-              <div className="card p-6 text-center">
-                <Package size={28} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No products listed yet.</p>
-                <button onClick={() => setAddProductOpen(true)} className="text-emerald-600 text-sm font-medium mt-2 hover:underline">List a product →</button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {products.map(product => (
-                  <div key={product.id} className="card p-4 flex items-start justify-between group">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900 text-sm truncate">{product.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="badge-blue text-xs">{product.category}</span>
-                        <span className="badge-slate text-xs">{product.condition}</span>
-                      </div>
-                    </div>
-                    <button onClick={() => handleDelete('products', product.id)}
-                      className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 ml-2 flex-shrink-0">
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Exchanges */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                <Repeat2 size={18} className="text-amber-600" /> Exchanges
-                {pendingReceived.length > 0 && (
-                  <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{pendingReceived.length}</span>
-                )}
-              </h2>
-              <Link to="/exchanges" className="text-xs text-emerald-600 hover:underline">View all →</Link>
+            <div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Completed</p>
+              <p className="text-2xl sm:text-3xl font-black text-white mt-0.5">{completedExchanges}</p>
             </div>
-            {loading ? <SkeletonCard /> : exchanges.length === 0 ? (
-              <div className="card p-6 text-center">
-                <Repeat2 size={28} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No exchanges yet.</p>
-                <Link to="/marketplace" className="text-emerald-600 text-sm font-medium mt-2 hover:underline block">Browse marketplace →</Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {exchanges.slice(0, 5).map(ex => (
-                  <div key={ex.id} className="card p-4">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">{ex.offeredTitle || 'Exchange'}</p>
-                        <p className="text-xs text-slate-500">
-                          {ex.senderId === currentUser.uid ? `→ ${ex.recipientName}` : `← ${ex.senderName}`}
-                        </p>
-                      </div>
-                      <span className={`${getStatusColor(ex.status)} flex-shrink-0`}>{ex.status}</span>
-                    </div>
-                    {ex.status === 'Pending' && ex.recipientId === currentUser.uid && (
-                      <div className="flex gap-2 mt-2">
-                        <button onClick={() => handleExchangeAction(ex.id, 'Accepted')}
-                          className="flex-1 text-xs py-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 font-medium flex items-center justify-center gap-1 transition-colors">
-                          <CheckCircle size={12} /> Accept
-                        </button>
-                        <button onClick={() => handleExchangeAction(ex.id, 'Rejected')}
-                          className="flex-1 text-xs py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 font-medium flex items-center justify-center gap-1 transition-colors">
-                          <XCircle size={12} /> Decline
-                        </button>
-                      </div>
-                    )}
-                    {ex.status === 'Accepted' && (
-                      <Link to="/chat" className="mt-2 text-xs text-emerald-600 hover:underline flex items-center gap-1 font-medium">
-                        <MessageCircle size={12} /> Open Chat
-                      </Link>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="mt-8 card p-5">
-          <h3 className="font-bold text-slate-900 mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Tab Controls */}
+        <div className="flex items-center justify-between border-b border-slate-200/80 mb-6">
+          <div className="flex gap-2">
             {[
-              { label: 'Add Skill', icon: Code, action: () => setAddSkillOpen(true), color: 'emerald' },
-              { label: 'List Product', icon: Package, action: () => setAddProductOpen(true), color: 'blue' },
-              { label: 'Marketplace', icon: Compass, action: () => navigate('/marketplace'), color: 'amber' },
-              { label: 'Community', icon: Users, action: () => navigate('/feed'), color: 'purple' },
-            ].map(item => (
-              <button key={item.label} onClick={item.action}
-                className="card p-4 flex flex-col items-center gap-2 hover:border-emerald-300 transition-colors group">
-                <item.icon size={20} className="text-slate-400 group-hover:text-emerald-600 transition-colors" />
-                <span className="text-xs font-medium text-slate-600">{item.label}</span>
+              { id: 'skills', label: 'My Skills', icon: Code, count: skills.length },
+              { id: 'products', label: 'My Products', icon: Package, count: products.length },
+              { id: 'exchanges', label: 'Exchange Requests', icon: Repeat2, count: pendingReceived.length, alert: pendingReceived.length > 0 }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 pb-3.5 px-3 sm:px-4 text-sm font-semibold transition-all relative ${
+                  activeTab === tab.id
+                    ? 'text-emerald-700'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <tab.icon size={16} />
+                <span>{tab.label}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                  tab.alert
+                    ? 'bg-rose-500 text-white animate-pulse'
+                    : activeTab === tab.id
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {tab.count}
+                </span>
+                {activeTab === tab.id && (
+                  <motion.div
+                    layoutId="activeTabIndicator"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600"
+                  />
+                )}
               </button>
             ))}
           </div>
+
+          <Link
+            to="/marketplace"
+            className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+          >
+            Explore Marketplace <ArrowRight size={14} />
+          </Link>
         </div>
+
+        {/* Tab Content */}
+        {loading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
+          </div>
+        ) : (
+          <>
+            {/* SKILLS TAB */}
+            {activeTab === 'skills' && (
+              skills.length === 0 ? (
+                <div className="card p-12 text-center max-w-lg mx-auto">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+                    <Code size={30} />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">No skills listed yet</h3>
+                  <p className="text-slate-500 text-sm mb-6">
+                    What can you teach or help with? Coding, design, tutoring, language practice, or video editing?
+                  </p>
+                  <button onClick={() => setAddSkillOpen(true)} className="btn-primary mx-auto">
+                    <Plus size={16} /> Add Your First Skill
+                  </button>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {skills.map(skill => (
+                    <motion.div
+                      layout
+                      key={skill.id}
+                      className="card-interactive p-6 flex flex-col justify-between group"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <span className="badge-green">{skill.category}</span>
+                          <span className="badge-slate">{skill.experienceLevel}</span>
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-emerald-600 transition-colors mb-2">
+                          {skill.title}
+                        </h3>
+                        <p className="text-slate-600 text-sm line-clamp-3 leading-relaxed mb-4">
+                          {skill.description}
+                        </p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Clock size={13} className="text-slate-400" /> {skill.availability}
+                        </span>
+                        <button
+                          onClick={() => handleDelete('skills', skill.id)}
+                          className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                          title="Delete skill"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* PRODUCTS TAB */}
+            {activeTab === 'products' && (
+              products.length === 0 ? (
+                <div className="card p-12 text-center max-w-lg mx-auto">
+                  <div className="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-4 border border-teal-100">
+                    <Package size={30} />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">No products listed yet</h3>
+                  <p className="text-slate-500 text-sm mb-6">
+                    List a book, electronics, accessories, or equipment you want to trade for useful skills.
+                  </p>
+                  <button onClick={() => setAddProductOpen(true)} className="btn-primary mx-auto">
+                    <Plus size={16} /> List a Product
+                  </button>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {products.map(product => (
+                    <motion.div
+                      layout
+                      key={product.id}
+                      className="card-interactive overflow-hidden flex flex-col justify-between group"
+                    >
+                      {product.imageURL ? (
+                        <div className="h-44 w-full overflow-hidden bg-slate-100">
+                          <img
+                            src={product.imageURL}
+                            alt={product.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            onError={e => { e.target.style.display = 'none'; }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-28 bg-gradient-to-r from-teal-50 to-emerald-50 flex items-center justify-center border-b border-slate-100">
+                          <Package size={32} className="text-teal-400/80" />
+                        </div>
+                      )}
+
+                      <div className="p-6 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-2.5">
+                            <span className="badge-blue">{product.category}</span>
+                            <span className="badge-slate">{product.condition}</span>
+                          </div>
+                          <h3 className="text-lg font-bold text-slate-900 group-hover:text-emerald-600 transition-colors mb-2">
+                            {product.title}
+                          </h3>
+                          <p className="text-slate-600 text-sm line-clamp-2 leading-relaxed mb-3">
+                            {product.description}
+                          </p>
+                          {product.desiredExchange && (
+                            <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2.5 border border-slate-100 mb-4">
+                              <strong className="text-slate-700">Wants:</strong> {product.desiredExchange}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                          <span className="text-emerald-700 font-semibold">{product.status || 'Available'}</span>
+                          <button
+                            onClick={() => handleDelete('products', product.id)}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Delete product"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* EXCHANGES TAB */}
+            {activeTab === 'exchanges' && (
+              exchanges.length === 0 ? (
+                <div className="card p-12 text-center max-w-lg mx-auto">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 border border-amber-100">
+                    <Repeat2 size={30} />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">No exchange requests yet</h3>
+                  <p className="text-slate-500 text-sm mb-6">
+                    Browse the marketplace and propose an exchange to connect with other members.
+                  </p>
+                  <Link to="/marketplace" className="btn-primary mx-auto">
+                    <Compass size={16} /> Explore Marketplace
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3 max-w-3xl">
+                  {exchanges.map(ex => (
+                    <div key={ex.id} className="card-interactive p-5">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">
+                            {ex.senderId === currentUser.uid ? `Offer to ${ex.recipientName}` : `Request from ${ex.senderName}`}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">{timeAgo(ex.createdAt)}</p>
+                        </div>
+                        <span className={getStatusColor(ex.status)}>{ex.status}</span>
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-700 mb-3 flex items-center gap-2">
+                        <span className="font-semibold">{ex.offeredTitle || 'Offer'}</span>
+                        <Repeat2 size={13} className="text-emerald-500" />
+                        <span className="font-semibold">{ex.requestedTitle || 'Requirement'}</span>
+                      </div>
+                      {ex.status === 'Accepted' && (
+                        <Link to={`/chat`} className="text-xs font-bold text-emerald-600 flex items-center gap-1 hover:underline">
+                          <MessageCircle size={14} /> Open Conversation
+                        </Link>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </>
+        )}
       </div>
 
-      {/* Add Skill Modal */}
-      <Modal open={addSkillOpen} onClose={() => setAddSkillOpen(false)} title="Add a Skill">
+      {/* Modern Add Skill Modal */}
+      <Modal open={addSkillOpen} onClose={() => setAddSkillOpen(false)} title="List a Skill for Exchange">
         <form onSubmit={handleAddSkill} className="space-y-4">
+          {/* Quick Presets */}
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Quick Presets (Click to autofill)</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { title: 'Full-Stack React & Node', cat: 'Web Development', desc: 'Offering frontend React UI building and backend Node.js API development.' },
+                { title: 'Python & Data Automation', cat: 'Java & Python', desc: 'Can teach Python scripting, pandas data analysis, and automation.' },
+                { title: 'UI/UX & Figma Design', cat: 'UI/UX Design', desc: 'Designing modern responsive web and mobile interfaces in Figma.' },
+                { title: 'English Fluency & Speaking', cat: 'Language Learning', desc: 'Conversational English practice, pronunciation coaching, and interview prep.' },
+                { title: 'Video Editing & Premiere', cat: 'Video Editing', desc: 'Editing short-form Reels/TikToks or long-form YouTube videos.' },
+              ].map(p => (
+                <button
+                  key={p.title}
+                  type="button"
+                  onClick={() => setNewSkill(prev => ({ ...prev, title: p.title, category: p.cat, description: p.desc }))}
+                  className="text-xs bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 px-2.5 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                >
+                  ⚡ {p.title}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="form-label">Skill Title *</label>
-            <input className="form-input" placeholder="e.g. React.js Development" value={newSkill.title} onChange={e => setNewSkill(p => ({ ...p, title: e.target.value }))} required />
+            <input
+              className="form-input"
+              placeholder="e.g. Full-Stack React & Node Development"
+              value={newSkill.title}
+              onChange={e => setNewSkill(prev => ({ ...prev, title: e.target.value }))}
+              required
+            />
           </div>
+
           <div>
-            <label className="form-label">Description *</label>
-            <textarea className="form-input resize-none" rows={3} placeholder="Describe what you can teach or help with..." value={newSkill.description} onChange={e => setNewSkill(p => ({ ...p, description: e.target.value }))} required />
+            <label className="form-label">What can you teach or help with? *</label>
+            <textarea
+              className="form-input resize-none"
+              rows={3}
+              placeholder="Describe your expertise, what projects you can help build, and what you're open to teaching..."
+              value={newSkill.description}
+              onChange={e => setNewSkill(prev => ({ ...prev, description: e.target.value }))}
+              required
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="form-label">Category</label>
-              <select className="form-input" value={newSkill.category} onChange={e => setNewSkill(p => ({ ...p, category: e.target.value }))}>
+              <select
+                className="form-input"
+                value={newSkill.category}
+                onChange={e => setNewSkill(prev => ({ ...prev, category: e.target.value }))}
+              >
                 {SKILL_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label className="form-label">Level</label>
-              <select className="form-input" value={newSkill.experienceLevel} onChange={e => setNewSkill(p => ({ ...p, experienceLevel: e.target.value }))}>
+              <label className="form-label">Experience Level</label>
+              <select
+                className="form-input"
+                value={newSkill.experienceLevel}
+                onChange={e => setNewSkill(prev => ({ ...prev, experienceLevel: e.target.value }))}
+              >
                 {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(l => <option key={l}>{l}</option>)}
               </select>
             </div>
           </div>
+
           <div>
             <label className="form-label">Availability</label>
-            <select className="form-input" value={newSkill.availability} onChange={e => setNewSkill(p => ({ ...p, availability: e.target.value }))}>
+            <select
+              className="form-input"
+              value={newSkill.availability}
+              onChange={e => setNewSkill(prev => ({ ...prev, availability: e.target.value }))}
+            >
               {['Flexible', 'Weekdays', 'Weekends', 'Evenings Only', 'Limited'].map(o => <option key={o}>{o}</option>)}
             </select>
           </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setAddSkillOpen(false)} className="btn-secondary flex-1">Cancel</button>
+
+          <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+            <button type="button" onClick={() => setAddSkillOpen(false)} className="btn-secondary flex-1">
+              Cancel
+            </button>
             <button type="submit" disabled={submitting} className="btn-primary flex-1">
-              {submitting ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Add Skill'}
+              {submitting ? 'Listing...' : 'List Skill'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Add Product Modal */}
-      <Modal open={addProductOpen} onClose={() => setAddProductOpen(false)} title="List a Product">
+      {/* Modern List Product Modal */}
+      <Modal open={addProductOpen} onClose={() => setAddProductOpen(false)} title="List a Product for Exchange">
         <form onSubmit={handleAddProduct} className="space-y-4">
           <div>
             <label className="form-label">Product Name *</label>
-            <input className="form-input" placeholder="e.g. Mechanical Keyboard" value={newProduct.title} onChange={e => setNewProduct(p => ({ ...p, title: e.target.value }))} required />
+            <input
+              className="form-input"
+              placeholder="e.g. Keychron Mechanical Keyboard"
+              value={newProduct.title}
+              onChange={e => setNewProduct(prev => ({ ...prev, title: e.target.value }))}
+              required
+            />
           </div>
+
           <div>
-            <label className="form-label">Description *</label>
-            <textarea className="form-input resize-none" rows={3} placeholder="Describe the product, its condition, specs..." value={newProduct.description} onChange={e => setNewProduct(p => ({ ...p, description: e.target.value }))} required />
+            <label className="form-label">Description & Condition details *</label>
+            <textarea
+              className="form-input resize-none"
+              rows={3}
+              placeholder="Provide item specs, usage history, and condition..."
+              value={newProduct.description}
+              onChange={e => setNewProduct(prev => ({ ...prev, description: e.target.value }))}
+              required
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="form-label">Category</label>
-              <select className="form-input" value={newProduct.category} onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))}>
+              <select
+                className="form-input"
+                value={newProduct.category}
+                onChange={e => setNewProduct(prev => ({ ...prev, category: e.target.value }))}
+              >
                 {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="form-label">Condition</label>
-              <select className="form-input" value={newProduct.condition} onChange={e => setNewProduct(p => ({ ...p, condition: e.target.value }))}>
+              <select
+                className="form-input"
+                value={newProduct.condition}
+                onChange={e => setNewProduct(prev => ({ ...prev, condition: e.target.value }))}
+              >
                 {PRODUCT_CONDITIONS.map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
+
           <div>
-            <label className="form-label">What you want in exchange</label>
-            <input className="form-input" placeholder="e.g. Python tutoring, UI design help" value={newProduct.desiredExchange} onChange={e => setNewProduct(p => ({ ...p, desiredExchange: e.target.value }))} />
+            <label className="form-label">What do you want in exchange?</label>
+            <input
+              className="form-input"
+              placeholder="e.g. Python backend guidance, UI design help"
+              value={newProduct.desiredExchange}
+              onChange={e => setNewProduct(prev => ({ ...prev, desiredExchange: e.target.value }))}
+            />
           </div>
+
           <div>
-            <label className="form-label">Image URL <span className="text-slate-400 font-normal">(optional)</span></label>
-            <input className="form-input" placeholder="https://..." value={newProduct.imageURL} onChange={e => setNewProduct(p => ({ ...p, imageURL: e.target.value }))} />
+            <label className="form-label">Photo Image URL (Optional)</label>
+            <input
+              className="form-input"
+              placeholder="https://images.unsplash.com/..."
+              value={newProduct.imageURL}
+              onChange={e => setNewProduct(prev => ({ ...prev, imageURL: e.target.value }))}
+            />
           </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setAddProductOpen(false)} className="btn-secondary flex-1">Cancel</button>
+
+          <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+            <button type="button" onClick={() => setAddProductOpen(false)} className="btn-secondary flex-1">
+              Cancel
+            </button>
             <button type="submit" disabled={submitting} className="btn-primary flex-1">
-              {submitting ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'List Product'}
+              {submitting ? 'Listing...' : 'List Product'}
             </button>
           </div>
         </form>
@@ -463,4 +760,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-

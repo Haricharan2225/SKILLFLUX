@@ -7,7 +7,7 @@ import { getInitials, getAvatarColor } from '../utils/helpers';
 import {
   Home, Compass, Repeat2, Package, Users, MessageCircle,
   Bell, LayoutDashboard, User, Settings, LogOut, Menu, X,
-  ChevronDown, Zap
+  ChevronDown, Zap, Plus
 } from 'lucide-react';
 
 const NavLink = ({ to, icon: Icon, label, badge, onClick }) => {
@@ -99,6 +99,15 @@ const Navbar = () => {
         <div className="flex items-center gap-2">
           {currentUser ? (
             <>
+              {/* Quick Add Skill button */}
+              <Link
+                to="/dashboard"
+                className="hidden sm:inline-flex btn-primary text-xs py-1.5 px-3 rounded-lg shadow-xs"
+                title="Add a new skill"
+              >
+                <Plus size={14} /> Add Skill
+              </Link>
+
               {/* Notification bell (mobile) */}
               <Link to="/notifications" className="lg:hidden relative p-2 hover:bg-slate-100 rounded-lg">
                 <Bell size={20} className="text-slate-600" />
