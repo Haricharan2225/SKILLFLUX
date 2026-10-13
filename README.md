@@ -1,49 +1,145 @@
-# SkillFlux – Skill for Product Marketplace
+# SkillFlux – Zero-Money Skill & Product Exchange Platform
 
-Welcome to the future of exchange. SkillFlux is an AI-powered marketplace where users exchange **Skills for Products** (no money involved).
+> **Connect. Learn. Exchange. Grow. — No mandatory money involved.**
 
-## 🚀 Key Features
-- **AI-Powered Matching**: Our custom algorithm calculates similarity scores between user talents and product requirements.
-- **WhatsApp-Style Real-time Chat**: Connect and finalize swaps instantly using Firestore real-time snapshots.
-- **Personal AI Assistant**: Floating AI companion to help you navigate the platform and answer FAQs.
-- **Premium UI/UX**: Professional "Nature Green & White" glassmorphism theme designed for a top-tier startup feel.
+SkillFlux is a full-featured, zero-money social barter platform where people exchange skills, knowledge, and physical products. It combines the professional credibility of LinkedIn with the barter philosophy of a community cooperative.
+
+---
+
+## 🌟 Core Exchange Types
+
+SkillFlux supports all four barter combinations:
+1. **Skill for Skill** (e.g., React mentoring in exchange for UI/UX design lessons)
+2. **Skill for Product** (e.g., Python tutoring in exchange for a mechanical keyboard)
+3. **Product for Skill** (e.g., Programming textbook in exchange for graphic design help)
+4. **Product for Product** (e.g., Drawing tablet in exchange for photography gear)
+
+*Users can optionally mention an estimated reference value for context, but the platform does not require or allow payment processing.*
+
+---
 
 ## 🛠 Tech Stack
--   **Frontend**: React 19 (Vite) + Tailwind CSS v4 + Framer Motion
--   **Backend**: Node.js + Express
--   **Database**: Firebase Firestore
--   **Authentication**: Firebase Auth
+
+- **Frontend**: React 19, Vite, Tailwind CSS v4, Framer Motion, Lucide Icons, React Hot Toast
+- **Backend**: Node.js, Express, CORS, Dotenv
+- **Database & Auth**: Firebase Firestore & Firebase Authentication (Spark Free Tier)
+- **Deployment**: Vercel (Frontend), Render (Backend)
+
+---
 
 ## 📂 Project Structure
--   `frontend/`: The React application.
--   `backend/`: Express server for AI matching and platform statistics.
 
-## ⚙️ Setup
+```text
+SKILLFLUX/
+├── backend/
+│   ├── index.js            # Express API (Matching algorithm, stats, health checks)
+│   ├── package.json        # Backend dependencies & scripts
+│   └── package-lock.json
+├── skillflux-client/       # React (Vite) Frontend Application
+│   ├── public/             # Static logos, icons, and assets
+│   ├── src/
+│   │   ├── components/     # UI widgets: Navbar, AIChatbot, UI.jsx (Avatar, Modal, etc.)
+│   │   ├── context/        # AuthContext (Firebase Auth state, role verification)
+│   │   ├── pages/          # All 12 application pages:
+│   │   │   ├── Landing.jsx      # Conversion-focused landing with stats & FAQ
+│   │   │   ├── Login.jsx        # Login & Password reset modal
+│   │   │   ├── Register.jsx     # Registration & email validation
+│   │   │   ├── Onboarding.jsx   # 4-step profile setup wizard
+│   │   │   ├── Dashboard.jsx    # Real stats, quick actions, skill/product listings
+│   │   │   ├── Marketplace.jsx  # Skills, Products, Members tabs & Smart Matches
+│   │   │   ├── Exchanges.jsx    # State machine exchange proposals & dual confirmation
+│   │   │   ├── Feed.jsx         # Social community feed with filtering & likes
+│   │   │   ├── Chat.jsx         # Real-time conversations & 1-on-1 messaging
+│   │   │   ├── Profile.jsx      # Public user profiles, connections & follow logic
+│   │   │   ├── Notifications.jsx# Real-time notifications & mark-as-read
+│   │   │   ├── Settings.jsx     # Profile preferences, avatar & password update
+│   │   │   └── Admin.jsx        # Analytics, moderation, idempotent demo seeder
+│   │   ├── utils/          # helpers.js (Deterministic matching algorithm, categories)
+│   │   ├── firebase.js     # Client SDK initialization
+│   │   ├── App.jsx         # React Router v7 routes & ProtectedRoute guards
+│   │   └── index.css       # Tailwind CSS v4 custom theme & tokens
+│   ├── package.json
+│   └── vite.config.js
+├── firestore.rules         # Security rules with least-privilege access control
+└── README.md
+```
 
-### Prerequisites
--   Node.js (v18+)
--   Firebase Account
+---
 
-### 1. Frontend
-1.  `cd frontend`
-2.  `npm install`
-3.  Create `.env` and add your Firebase credentials:
-    ```env
-    VITE_FIREBASE_API_KEY=...
-    VITE_FIREBASE_AUTH_DOMAIN=...
-    VITE_FIREBASE_PROJECT_ID=...
-    VITE_FIREBASE_STORAGE_BUCKET=...
-    VITE_FIREBASE_MESSAGING_SENDER_ID=...
-    VITE_FIREBASE_APP_ID=...
-    VITE_FIREBASE_MEASUREMENT_ID=...
-    ```
-4.  `npm run dev`
+## ⚡ Getting Started
 
-### 2. Backend
-1.  `cd backend`
-2.  `npm install`
-3.  `npm run dev`
+### 1. Prerequisites
+- Node.js (v18 or later)
+- npm or pnpm
+- Firebase Project (`skillflux-d2c81` or your own)
 
-## 📧 Support
-Admin Panel: `haripatel2225@gmail.com`
-Developed for SkillFlux Marketplace.
+### 2. Frontend Setup (`skillflux-client`)
+```bash
+cd skillflux-client
+npm install
+npm run dev
+```
+The client starts on `http://localhost:5173`.
+
+### 3. Backend Setup (`backend`)
+```bash
+cd backend
+npm install
+npm start
+```
+The server starts on `http://localhost:5000`.
+
+---
+
+## 🔐 Firebase Configuration & Security Rules
+
+The frontend uses standard client-side Firebase Web SDK credentials stored in `skillflux-client/src/firebase.js`.
+
+### Security Rules (`firestore.rules`)
+Deploy rules using the Firebase CLI:
+```bash
+firebase deploy --only firestore:rules
+```
+Key constraints enforced by `firestore.rules`:
+- **Role Escalation Protection**: Users cannot modify their own `role` field. Only users matching `haripatel2225@gmail.com` or existing admins retain administrative privileges.
+- **Listing Ownership**: Only listing owners can edit or delete their skills and products.
+- **Private Conversations**: Only participants of a chat can read and send messages.
+- **Exchange Requests**: Only participants can transition exchange status.
+- **Two-Party Completion**: Both parties must independently confirm completion before status moves to `Completed`.
+
+---
+
+## 🎯 Demo Data Seeding
+
+1. Log in with an admin account (e.g., `haripatel2225@gmail.com`).
+2. Navigate to **Admin Panel** (`/admin`) → **Seeding** tab.
+3. Click **Seed Demo Data**.
+   - Seeds 10 realistic fictional skills and 8 physical products with stable IDs (`demo_skill_*`, `demo_product_*`).
+   - Idempotent: Can be run multiple times without duplicating entries.
+   - Isolated: Fictional content is flagged with `isDemo: true`.
+4. Click **Clear Demo Data** to safely remove demo entries without touching real user accounts.
+
+---
+
+## 🚀 Deployment
+
+### Frontend (Vercel)
+1. Root directory: `skillflux-client`
+2. Build command: `npm run build`
+3. Output directory: `dist`
+4. Install command: `npm install`
+5. Live URL: [https://skillflux.vercel.app/](https://skillflux.vercel.app/)
+
+### Backend (Render / Railway)
+1. Root directory: `backend`
+2. Build command: `npm install`
+3. Start command: `node index.js`
+4. Environment variables:
+   - `PORT=5000`
+   - `FRONTEND_URL=https://skillflux.vercel.app`
+
+---
+
+## 🛡️ Limitations & Future Improvements
+- **Spark Plan Constraints**: Uses client SDK transactions and deterministic matching rather than serverless background triggers or paid vector embeddings.
+- **Search**: Employs client-side keyword and token overlap similarity algorithms suitable for low-to-medium volume datasets.

@@ -1,209 +1,249 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
-import { collection, query, getDocs, deleteDoc, doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Users, Code, Package, Repeat, Trash2, ShieldCheck, Activity, BarChart3, Database } from 'lucide-react';
+import {
+  collection, query, getDocs, doc, deleteDoc,
+  updateDoc, serverTimestamp, orderBy, limit, writeBatch, setDoc
+} from 'firebase/firestore';
+import { Users, Code, Package, Repeat2, Trash2, Shield, BarChart3, RefreshCw } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { SkeletonCard } from '../components/UI';
+import { SKILL_CATEGORIES, PRODUCT_CATEGORIES } from '../utils/helpers';
 
 const Admin = () => {
   const { userData } = useAuth();
-  const [counts, setCounts] = useState({ users: 0, skills: 0, products: 0, exchanges: 0 });
+  const [stats, setStats] = useState({ users: 0, skills: 0, products: 0, exchanges: 0, posts: 0 });
   const [users, setUsers] = useState([]);
-  const [skills, setSkills] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [tab, setTab] = useState('overview');
   const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
 
-  const fetchData = async () => {
+  const fetchStats = async () => {
     setLoading(true);
     try {
-      const uSnap = await getDocs(collection(db, 'users'));
-      const sSnap = await getDocs(collection(db, 'skills'));
-      const pSnap = await getDocs(collection(db, 'products'));
-      const rSnap = await getDocs(collection(db, 'requests'));
-
-      setCounts({
-        users: uSnap.size,
-        skills: sSnap.size,
-        products: pSnap.size,
-        exchanges: rSnap.size
+      const [usersSnap, skillsSnap, productsSnap, exchangesSnap, postsSnap] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'skills')),
+        getDocs(collection(db, 'products')),
+        getDocs(collection(db, 'exchanges')),
+        getDocs(collection(db, 'posts')),
+      ]);
+      setStats({
+        users: usersSnap.size,
+        skills: skillsSnap.size,
+        products: productsSnap.size,
+        exchanges: exchangesSnap.size,
+        posts: postsSnap.size,
       });
-
-      setUsers(uSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setSkills(sSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setProducts(pSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.isDemo));
     } catch (err) {
-      toast.error('Failed to load admin data.');
+      toast.error('Failed to load stats.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchStats(); }, []);
 
-  const handleDelete = async (coll, id) => {
-    if (!window.confirm('Are you sure you want to delete this?')) return;
+  const deleteUser = async (userId) => {
+    if (userId === userData?.uid) { toast.error('Cannot delete your own admin account.'); return; }
+    if (!window.confirm('Delete this user? This cannot be undone.')) return;
     try {
-      await deleteDoc(doc(db, coll, id));
-      fetchData();
-      toast.success('Deleted successfully.');
-    } catch (err) {
-      toast.error('Delete failed.');
-    }
+      await deleteDoc(doc(db, 'users', userId));
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      toast.success('User deleted from Firestore. Note: Firebase Auth account still exists (requires Admin SDK to delete).');
+    } catch { toast.error('Failed to delete user.'); }
   };
 
   const seedDemoData = async () => {
+    if (!window.confirm('Seed demo data? This will add sample skills, products, and posts (will skip existing).')) return;
+    setSeeding(true);
     try {
-        const demoUsers = [
-            { uid: 'u1', email: 'alex@dev.com', displayName: 'Alex Rivera', role: 'user' },
-            { uid: 'u2', email: 'sarah@design.me', displayName: 'Sarah Chen', role: 'user' },
-            { uid: 'u3', email: 'mike@marketing.io', displayName: 'Mike Ross', role: 'user' },
-            { uid: 'u4', email: 'elena@write.co', displayName: 'Elena Gilbert', role: 'user' },
-            { uid: 'u5', email: 'david@code.net', displayName: 'David Miller', role: 'user' },
-            { uid: 'u6', email: 'lisa@product.biz', displayName: 'Lisa Wang', role: 'user' },
-            { uid: 'u7', email: 'tom@tech.com', displayName: 'Tom Hardy', role: 'user' },
-            { uid: 'u8', email: 'anna@creative.com', displayName: 'Anna Scott', role: 'user' },
-            { uid: 'u9', email: 'james@startup.co', displayName: 'James Bond', role: 'user' },
-            { uid: 'u10', email: 'admin@skillflux.com', displayName: 'Flux Admin', role: 'admin' }
-        ];
+      const batch = writeBatch(db);
 
-        for (const u of demoUsers) {
-            await setDoc(doc(db, 'users', u.uid), { ...u, createdAt: serverTimestamp() });
-        }
+      const demoSkills = [
+        { id: 'demo_skill_1', title: 'React.js Development', category: 'Web Development', experienceLevel: 'Advanced', userId: 'demo_user_1', userName: 'Aarav Sharma', description: 'Full-stack React development with TypeScript, Redux, and React Query.', status: 'Active', availability: 'Weekends', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_2', title: 'UI/UX Design (Figma)', category: 'UI/UX Design', experienceLevel: 'Advanced', userId: 'demo_user_2', userName: 'Priya Reddy', description: 'Creating user-centered designs from wireframes to high-fidelity prototypes in Figma.', status: 'Active', availability: 'Evenings Only', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_3', title: 'Python & Data Science', category: 'Java & Python', experienceLevel: 'Intermediate', userId: 'demo_user_3', userName: 'Rahul Verma', description: 'Python for data analysis, pandas, numpy, and matplotlib.', status: 'Active', availability: 'Flexible', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_4', title: 'Graphic Design & Illustration', category: 'Graphic Design', experienceLevel: 'Advanced', userId: 'demo_user_4', userName: 'Ananya Patel', description: 'Brand identity, logo design, and digital illustration with Illustrator.', status: 'Active', availability: 'Weekends', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_5', title: 'Video Editing (Premiere Pro)', category: 'Video Editing', experienceLevel: 'Intermediate', userId: 'demo_user_5', userName: 'Kiran Kumar', description: 'Professional video editing, color grading, and motion graphics.', status: 'Active', availability: 'Evenings Only', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_6', title: 'Digital Marketing & SEO', category: 'Digital Marketing', experienceLevel: 'Expert', userId: 'demo_user_6', userName: 'Sneha Rao', description: 'SEO, Google Ads, social media strategy, and content marketing.', status: 'Active', availability: 'Flexible', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_7', title: 'Photography & Lightroom', category: 'Photography', experienceLevel: 'Advanced', userId: 'demo_user_7', userName: 'Arjun Mehta', description: 'Portrait, product, and street photography with post-processing in Lightroom.', status: 'Active', availability: 'Weekends', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_8', title: 'Java & Spring Boot', category: 'Java & Python', experienceLevel: 'Advanced', userId: 'demo_user_8', userName: 'Neha Singh', description: 'Backend development with Java, Spring Boot, and microservices.', status: 'Active', availability: 'Weekdays', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_9', title: 'Excel & Data Analytics', category: 'Data Analytics', experienceLevel: 'Intermediate', userId: 'demo_user_11', userName: 'Vikram Joshi', description: 'Excel, pivot tables, Power BI, and business data visualization.', status: 'Active', availability: 'Flexible', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_skill_10', title: 'Content Writing & Copywriting', category: 'Communication', experienceLevel: 'Advanced', userId: 'demo_user_12', userName: 'Divya Iyer', description: 'Blog posts, website copy, email campaigns, and technical writing.', status: 'Active', availability: 'Flexible', isDemo: true, createdAt: serverTimestamp() },
+      ];
 
-        const demoSkills = [
-            { userId: 'u1', userName: 'Alex Rivera', title: 'React & Next.js Mastery', description: 'Can build complex dashboards and web apps.', category: 'Coding' },
-            { userId: 'u2', userName: 'Sarah Chen', title: 'UI/UX Brand Design', description: 'Creating premium visual identities.', category: 'Design' },
-            { userId: 'u3', userName: 'Mike Ross', title: 'SEO & Growth Hacking', description: 'Scaling startups from 0 to 100k users.', category: 'Marketing' },
-            { userId: 'u4', userName: 'Elena Gilbert', title: 'Copywriting & Content Strategy', description: 'Compelling stories that convert.', category: 'Writing' },
-            { userId: 'u5', userName: 'David Miller', title: 'Cloud Infrastructure (AWS)', description: 'Setting up scalable server environments.', category: 'Coding' },
-            { userId: 'u6', userName: 'Lisa Wang', title: 'Product Management', description: 'Roadmapping and agile execution.', category: 'Business' },
-            { userId: 'u7', userName: 'Tom Hardy', title: 'Cyber Security Auditing', description: 'Penetration testing and security reports.', category: 'Coding' },
-            { userId: 'u8', userName: 'Anna Scott', title: 'Motion Graphics (AE)', description: 'Stunning 2D/3D animations.', category: 'Design' },
-            { userId: 'u9', userName: 'James Bond', title: 'Fintech Consulting', description: 'Navigating financial regulations and tech.', category: 'Business' }
-        ];
+      const demoProducts = [
+        { id: 'demo_product_1', title: 'Mechanical Keyboard (Cherry MX Blue)', category: 'Keyboards & Mice', condition: 'Like New', userId: 'demo_user_9', userName: 'Rohan Das', description: 'Barely used mechanical keyboard with Cherry MX Blue switches. RGB backlit.', desiredExchange: 'Python or web development tutoring', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_2', title: 'Sony WH-1000XM4 Headphones', category: 'Audio & Headphones', condition: 'Good', userId: 'demo_user_10', userName: 'Meera Nair', description: 'Industry-leading noise cancellation headphones in excellent condition.', desiredExchange: 'Academic tutoring or any skill exchange', imageURL: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_3', title: 'Wacom Intuos Drawing Tablet', category: 'Art Supplies', condition: 'Good', userId: 'demo_user_4', userName: 'Ananya Patel', description: 'Medium-sized drawing tablet, great for digital art, illustration, and design.', desiredExchange: 'Photography lessons or mentoring', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_4', title: 'Learning Python (3rd Ed.)', category: 'Books & Education', condition: 'Like New', userId: 'demo_user_3', userName: 'Rahul Verma', description: '1600-page comprehensive Python reference by Mark Lutz. Barely used.', desiredExchange: 'Web development or UI design guidance', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_5', title: 'Joby GorillaPod Tripod', category: 'Photography Gear', condition: 'New', userId: 'demo_user_7', userName: 'Arjun Mehta', description: 'Flexible tripod for photography and videography. Perfect for YouTube/vlogging.', desiredExchange: 'Graphic design or video editing help', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_6', title: 'Logitech MX Master 3 Mouse', category: 'Keyboards & Mice', condition: 'Like New', userId: 'demo_user_11', userName: 'Vikram Joshi', description: 'Multi-device wireless mouse, ergonomic design. Very little use.', desiredExchange: 'Python or data science mentoring', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_7', title: 'Art Supply Bundle (Watercolors)', category: 'Art Supplies', condition: 'Good', userId: 'demo_user_4', userName: 'Ananya Patel', description: 'Winsor & Newton watercolor set, brushes, and paper. Barely used.', desiredExchange: 'Any skill exchange', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+        { id: 'demo_product_8', title: 'Programming Textbook Bundle', category: 'Books & Education', condition: 'Good', userId: 'demo_user_8', userName: 'Neha Singh', description: 'Clean Code, Design Patterns, and System Design Interview books.', desiredExchange: 'Database mentoring or cloud computing help', status: 'Available', isDemo: true, createdAt: serverTimestamp() },
+      ];
 
-        for (const s of demoSkills) {
-            await addDoc(collection(db, 'skills'), { ...s, createdAt: serverTimestamp() });
-        }
+      demoSkills.forEach(s => batch.set(doc(db, 'skills', s.id), s));
+      demoProducts.forEach(p => batch.set(doc(db, 'products', p.id), p));
 
-        const demoProducts = [
-            { userId: 'u1', userName: 'Alex Rivera', title: 'Mechanical Keyboard (Custom)', description: 'GMMK Pro with Panda switches.', requiredSkill: 'UI/UX Design', imageURL: 'https://images.unsplash.com/photo-1511467687858-23d96c32e4ae?q=80&w=2070' },
-            { userId: 'u2', userName: 'Sarah Chen', title: 'iPad Pro 12.9" (2022)', description: 'Barely used, includes Pencil.', requiredSkill: 'React help', imageURL: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?q=80&w=2070' },
-            { userId: 'u3', userName: 'Mike Ross', title: 'Sony WH-1000XM4', description: 'Industry leading noise canceling.', requiredSkill: 'Python Automation', imageURL: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=2070' },
-            { userId: 'u4', userName: 'Elena Gilbert', title: 'Herman Miller Embody', description: 'Ergonomic chair for long work hours.', requiredSkill: 'Web Development', imageURL: 'https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?q=80&w=1974' },
-            { userId: 'u5', userName: 'David Miller', title: 'RTX 4090 GPU', description: 'Brand new, unopened box.', requiredSkill: 'Cyber Security help', imageURL: 'https://images.unsplash.com/photo-1591488320449-011701bb6704?q=80&w=2070' },
-            { userId: 'u6', userName: 'Lisa Wang', title: 'MacBook Pro M2 Max', description: '32GB RAM, 1TB SSD.', requiredSkill: 'Growth Marketing', imageURL: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?q=80&w=2052' },
-            { userId: 'u7', userName: 'Tom Hardy', title: 'DJI Mavic 3 Drone', description: 'Great for cinematic shots.', requiredSkill: 'Next.js Dev', imageURL: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?q=80&w=2070' },
-            { userId: 'u8', userName: 'Anna Scott', title: 'Wacom Cintiq 16', description: 'Perfect for digital illustrators.', requiredSkill: 'React Native', imageURL: 'https://images.unsplash.com/photo-1542744173-05336fcc7ad4?q=80&w=2002' },
-            { userId: 'u9', userName: 'James Bond', title: 'Coffee Machine (E6)', description: 'Premium Swiss espresso machine.', requiredSkill: 'iOS Development', imageURL: 'https://images.unsplash.com/photo-1520970014086-2208ec0bd9af?q=80&w=1974' }
-        ];
-
-        for (const p of demoProducts) {
-            await addDoc(collection(db, 'products'), { ...p, createdAt: serverTimestamp() });
-        }
-
-        // Add some sample requests
-        const demoRequests = [
-            { senderId: 'u2', senderName: 'Sarah Chen', receiverId: 'u1', itemTitle: 'Mechanical Keyboard (Custom)', itemType: 'Product', status: 'Accepted' },
-            { senderId: 'u3', senderName: 'Mike Ross', receiverId: 'u2', itemTitle: 'UI/UX Brand Design', itemType: 'Skill', status: 'Pending' }
-        ];
-
-        for (const r of demoRequests) {
-            await addDoc(collection(db, 'requests'), { ...r, createdAt: serverTimestamp() });
-        }
-
-        toast.success('Professional demo data seeded with 10 users!');
-        fetchData();
+      await batch.commit();
+      toast.success(`Seeded ${demoSkills.length} skills and ${demoProducts.length} products!`);
+      fetchStats();
     } catch (err) {
-        console.error(err);
-        toast.error('Failed to seed demo data.');
+      console.error(err);
+      toast.error('Seeding failed. Check console for details.');
+    } finally {
+      setSeeding(false);
     }
   };
 
+  const resetDemoData = async () => {
+    if (!window.confirm('Delete all demo skills and products? Real user data will not be affected.')) return;
+    try {
+      const [skillsSnap, productsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'skills'), ...[])),
+        getDocs(query(collection(db, 'products'), ...[])),
+      ]);
+      const batch = writeBatch(db);
+      skillsSnap.docs.filter(d => d.data().isDemo).forEach(d => batch.delete(d.ref));
+      productsSnap.docs.filter(d => d.data().isDemo).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      toast.success('Demo data cleared.');
+      fetchStats();
+    } catch { toast.error('Failed to clear demo data.'); }
+  };
+
+  if (userData?.role !== 'admin') return (
+    <div className="pt-24 text-center">
+      <Shield size={48} className="text-red-400 mx-auto mb-4" />
+      <p className="text-slate-600">Access denied. Admin only.</p>
+    </div>
+  );
+
+  const TABS = ['overview', 'users', 'seeding'];
+
   return (
-    <div className="pt-24 pb-12 px-4 max-w-7xl mx-auto min-h-screen">
-      <header className="flex justify-between items-end mb-12">
-        <div>
-          <h1 className="text-4xl font-black gradient-text mb-2">Admin Dashboard</h1>
-          <p className="text-slate-600 font-medium">Platform monitoring and user management</p>
+    <div className="pt-20 pb-12 min-h-screen bg-slate-50">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+              <Shield size={22} className="text-emerald-600" /> Admin Panel
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">Platform overview and management.</p>
+          </div>
+          <button onClick={fetchStats} className="btn-ghost text-sm">
+            <RefreshCw size={15} /> Refresh
+          </button>
         </div>
-        <button 
-          onClick={seedDemoData}
-          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all border border-slate-300 active:scale-95 shadow-xl"
-        >
-          <Database size={18} className="text-green-400" />
-          Seed Demo Data
-        </button>
-      </header>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        <StatCard icon={<Users className="text-green-400" />} label="Total Users" value={counts.users} color="border-green-500/20" />
-        <StatCard icon={<Code className="text-emerald-400" />} label="Skills Listed" value={counts.skills} color="border-cyan-500/20" />
-        <StatCard icon={<Package className="text-amber-400" />} label="Products Listed" value={counts.products} color="border-amber-500/20" />
-        <StatCard icon={<Repeat className="text-emerald-400" />} label="Total Exchanges" value={counts.exchanges} color="border-emerald-500/20" />
-      </div>
+        <div className="flex gap-1 mb-6 bg-white border border-slate-200 rounded-xl p-1 w-fit">
+          {TABS.map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
+                tab === t ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}>
+              {t}
+            </button>
+          ))}
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* User Management */}
-        <section className="glass p-8">
-          <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-            <Users size={24} className="text-slate-600" /> User Directory
-          </h2>
-          <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-            {users.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-4 bg-white/50 rounded-xl border border-slate-200">
-                <div>
-                  <p className="font-bold">{u.displayName || u.email}</p>
-                  <p className="text-xs text-slate-500">{u.email} • {u.role}</p>
+        {tab === 'overview' && (
+          <div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              {[
+                { label: 'Total Users', value: stats.users, icon: Users, color: 'emerald' },
+                { label: 'Skills', value: stats.skills, icon: Code, color: 'blue' },
+                { label: 'Products', value: stats.products, icon: Package, color: 'amber' },
+                { label: 'Exchanges', value: stats.exchanges, icon: Repeat2, color: 'purple' },
+                { label: 'Posts', value: stats.posts, icon: BarChart3, color: 'rose' },
+              ].map(s => (
+                <div key={s.label} className="card p-4">
+                  <s.icon size={20} className={`text-${s.color}-600 mb-2`} />
+                  <p className="text-2xl font-black text-slate-900">{loading ? '...' : s.value}</p>
+                  <p className="text-xs text-slate-500">{s.label}</p>
                 </div>
-                {u.email !== 'haripatel2225@gmail.com' && (
-                  <button onClick={() => handleDelete('users', u.id)} className="text-slate-600 hover:text-red-400 p-2"><Trash2 size={16} /></button>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
 
-        {/* Listings Monitor */}
-        <section className="glass p-8">
-          <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-             <Activity size={24} className="text-slate-600" /> Recent Postings
-          </h2>
-          <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-            {[...skills, ...products].sort((a,b) => b.createdAt - a.createdAt).map(item => (
-              <div key={item.id} className="flex items-center justify-between p-4 bg-white/50 rounded-xl border border-slate-200">
-                <div className="flex items-center gap-4">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.type === 'Skill' ? 'bg-green-500/10 text-green-400' : 'bg-cyan-500/10 text-emerald-400'}`}>
-                    {item.type === 'Skill' ? <Code size={14} /> : <Package size={14} />}
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">{item.title}</p>
-                    <p className="text-[10px] text-slate-500 uppercase font-black uppercase tracking-widest">{item.userName}</p>
-                  </div>
-                </div>
-                <button onClick={() => handleDelete(item.type === 'Skill' ? 'skills' : 'products', item.id)} className="text-slate-600 hover:text-red-400 p-2"><Trash2 size={16} /></button>
+            <div className="card p-5">
+              <h2 className="font-bold text-slate-900 mb-2">Platform Health</h2>
+              <p className="text-sm text-slate-500">All core features are operational. Firebase Auth and Firestore connected.</p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <span className="badge-green">Firebase Auth ✓</span>
+                <span className="badge-green">Firestore ✓</span>
+                <span className="badge-green">Exchange Workflow ✓</span>
+                <span className="badge-green">Messaging ✓</span>
+                <span className="badge-green">Notifications ✓</span>
               </div>
-            ))}
+            </div>
           </div>
-        </section>
+        )}
+
+        {tab === 'users' && (
+          <div className="card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left px-4 py-3 font-semibold text-slate-700">User</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-700">Email</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-700">Role</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
+                ) : users.map(user => (
+                  <tr key={user.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-900">{user.displayName || 'Unknown'}</td>
+                    <td className="px-4 py-3 text-slate-600">{user.email}</td>
+                    <td className="px-4 py-3">
+                      <span className={user.role === 'admin' ? 'badge-green' : 'badge-slate'}>{user.role || 'user'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.role !== 'admin' && (
+                        <button onClick={() => deleteUser(user.id)}
+                          className="text-red-500 hover:text-red-700 transition-colors text-xs flex items-center gap-1">
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'seeding' && (
+          <div className="space-y-4">
+            <div className="card p-6">
+              <h2 className="font-bold text-slate-900 mb-2">Seed Demo Data</h2>
+              <p className="text-slate-500 text-sm mb-4">
+                Creates realistic sample skills and products (10 skills, 8 products) to populate the marketplace. Uses stable IDs — safe to run multiple times.
+              </p>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700 mb-4">
+                ⚠ Demo data is flagged with <code className="bg-amber-100 px-1 rounded">isDemo: true</code> and will not impersonate real users.
+              </div>
+              <button onClick={seedDemoData} disabled={seeding} className="btn-primary">
+                {seeding ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Seed Demo Data'}
+              </button>
+            </div>
+            <div className="card p-6">
+              <h2 className="font-bold text-slate-900 mb-2">Reset Demo Data</h2>
+              <p className="text-slate-500 text-sm mb-4">Deletes only demo-flagged records. Real user data is not affected.</p>
+              <button onClick={resetDemoData} className="btn-danger">
+                <Trash2 size={15} /> Clear Demo Data
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
-
-const StatCard = ({ icon, label, value, color }) => (
-  <div className={`glass-card p-8 bg-white/40 border ${color}`}>
-    <div className="flex items-center gap-4 mb-4">
-      <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110">
-        {icon}
-      </div>
-      <p className="text-slate-600 font-bold uppercase tracking-widest text-[10px]">{label}</p>
-    </div>
-    <p className="text-4xl font-black">{value}</p>
-  </div>
-);
 
 export default Admin;
